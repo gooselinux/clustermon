@@ -1,0 +1,278 @@
+From e753ba2c9fb71012b9f3c6b041cf5cc353a83432 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Wed, 12 May 2010 16:09:06 -0400
+Subject: [PATCH 07/16] modclusterd: Add node ID to snmp output
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB    |   11 ++++++++-
+ .../modules/cluster/clumon/src/common/Cluster.cpp  |   24 +++++++++++++------
+ ricci/modules/cluster/clumon/src/common/Node.cpp   |    8 ++++++
+ .../modules/cluster/clumon/src/daemon/Monitor.cpp  |    4 ++-
+ ricci/modules/cluster/clumon/src/include/Cluster.h |    4 +++
+ .../cluster/clumon/src/snmp-agent/nodesMIB.cpp     |   13 ++++++++++-
+ .../clumon/src/snmp-agent/nodesMIB_access.cpp      |   19 +++++++++++++++
+ .../clumon/src/snmp-agent/nodesMIB_access.h        |    1 +
+ .../clumon/src/snmp-agent/nodesMIB_columns.h       |    1 +
+ 9 files changed, 74 insertions(+), 11 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+index 7fdf9de..a74a013 100644
+--- a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
++++ b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+@@ -257,7 +257,8 @@ RhcNodeEntry ::= SEQUENCE {
+ 	rhcNodeStatusCode		Integer32,
+ 	rhcNodeStatusDesc    		OCTET STRING,
+ 	rhcNodeRunningServicesNum	Integer32,
+-	rhcNodeRunningServicesNames	OCTET STRING
++	rhcNodeRunningServicesNames	OCTET STRING,
++	rhcNodeID			Integer32,
+ }
+ 
+ rhcNodeName OBJECT-TYPE
+@@ -307,6 +308,14 @@ rhcNodeRunningServicesNames OBJECT-TYPE
+ 	"Names of services running on node"
+ 	::= { rhcNodeEntry 5 }
+ 
++rhcNodeID OBJECT-TYPE
++	SYNTAX      Integer32
++	MAX-ACCESS  read-only
++	STATUS      current
++	DESCRIPTION
++	"Node ID"
++	::= { rhcNodeEntry 6 }
++
+ 
+ 
+ --  ##### services #####  --
+diff --git a/ricci/modules/cluster/clumon/src/common/Cluster.cpp b/ricci/modules/cluster/clumon/src/common/Cluster.cpp
+index 5e3c8e1..bc3feae 100644
+--- a/ricci/modules/cluster/clumon/src/common/Cluster.cpp
++++ b/ricci/modules/cluster/clumon/src/common/Cluster.cpp
+@@ -45,7 +45,7 @@ Cluster::Cluster(	const String &name,
+ 	_minQuorum(minQuorum)
+ {
+ 	// add no-node node
+-	addNode("", 0, false, false, "");
++	addNode("", 0, 0, false, false, "");
+ }
+ 
+ Cluster::~Cluster(void)
+@@ -136,13 +136,14 @@ Cluster::quorate()
+ }
+ 
+ counting_auto_ptr<Node>
+-Cluster::addNode(	const String& name,
+-					unsigned int votes,
+-					bool online,
+-					bool clustered,
+-					const String& uptime)
++Cluster::addNode(const String& name,
++		 unsigned int nodeid,
++		 unsigned int votes,
++		 bool online,
++		 bool clustered,
++		 const String& uptime)
+ {
+-	counting_auto_ptr<Node> node(new Node(name, _name, votes, online, clustered, uptime));
++	counting_auto_ptr<Node> node(new Node(name, nodeid, _name, votes, online, clustered, uptime));
+ 	if (_nodes.insert(pair<String, counting_auto_ptr<Node> >(name, node)).second)
+ 		return node;
+ 	else {
+@@ -321,6 +322,9 @@ ClusterMonitoring::cluster2xml(Cluster& cluster)
+ 		XMLObject n("node");
+ 		n.set_attr("name", node.name());
+ 
++		snprintf(buff, sizeof(buff), "%u", node.nodeid());
++		n.set_attr("nodeid", buff);
++
+ 		snprintf(buff, sizeof(buff), "%u", node.votes());
+ 		n.set_attr("votes", buff);
+ 
+@@ -409,8 +413,12 @@ ClusterMonitoring::xml2cluster(const String& xml)
+ 			// uptime
+ 			String uptime = obj.get_attr("uptime");
+ 
++			// nodeid
++			unsigned int node_id = 0;
++			sscanf(obj.get_attr("nodeid").c_str(), "%u", &node_id);
++
+ 			// add node to cluster
+-			cluster->addNode(node_name, votes, online, clustered, uptime);
++			cluster->addNode(node_name, node_id, votes, online, clustered, uptime);
+ 		}
+ 	}
+ 
+diff --git a/ricci/modules/cluster/clumon/src/common/Node.cpp b/ricci/modules/cluster/clumon/src/common/Node.cpp
+index 2e935cb..1f60340 100644
+--- a/ricci/modules/cluster/clumon/src/common/Node.cpp
++++ b/ricci/modules/cluster/clumon/src/common/Node.cpp
+@@ -26,6 +26,7 @@ using namespace std;
+ using namespace ClusterMonitoring;
+ 
+ Node::Node(	const String& name,
++			unsigned int nodeid,
+ 			const String& clustername,
+ 			unsigned int votes,
+ 			bool online,
+@@ -33,6 +34,7 @@ Node::Node(	const String& name,
+ 			const String& uptime) :
+ 	_name(name),
+ 	_clustername(clustername),
++	_nodeid(nodeid),
+ 	_votes(votes),
+ 	_online(online),
+ 	_clustered(clustered),
+@@ -49,6 +51,12 @@ Node::name() const
+ 	return _name;
+ }
+ 
++unsigned int
++Node::nodeid() const
++{
++	return _nodeid;
++}
++
+ String
+ Node::clustername() const
+ {
+diff --git a/ricci/modules/cluster/clumon/src/daemon/Monitor.cpp b/ricci/modules/cluster/clumon/src/daemon/Monitor.cpp
+index 435e28a..fc57879 100644
+--- a/ricci/modules/cluster/clumon/src/daemon/Monitor.cpp
++++ b/ricci/modules/cluster/clumon/src/daemon/Monitor.cpp
+@@ -471,9 +471,11 @@ Monitor::merge_data(const String& clustername)
+ 
+ 			bool clustered = obj.get_attr("clustered") == "true";
+ 			String uptime = obj.get_attr("uptime");
++			unsigned int nodeid = atoi(obj.get_attr("nodeid").c_str());
+ 
+ 			// add node to cluster
+-			cluster_ret->addNode(node_name, votes, online, clustered, uptime);
++			cluster_ret->addNode(node_name, nodeid, votes, online,
++					     clustered, uptime);
+ 		}
+ 	}
+ 
+diff --git a/ricci/modules/cluster/clumon/src/include/Cluster.h b/ricci/modules/cluster/clumon/src/include/Cluster.h
+index e505ec1..ed0b569 100644
+--- a/ricci/modules/cluster/clumon/src/include/Cluster.h
++++ b/ricci/modules/cluster/clumon/src/include/Cluster.h
+@@ -60,6 +60,7 @@ class Cluster
+ 		bool quorate();
+ 
+ 		counting_auto_ptr<Node> addNode(const String& name,
++						unsigned int nodeid,
+ 						unsigned int votes,
+ 						bool online,
+ 						bool clustered,
+@@ -93,6 +94,7 @@ class Node
+ {
+ 	public:
+ 		Node(	const String& name,
++				unsigned int nodeid,
+ 				const String& clustername,
+ 				unsigned int votes,
+ 				bool online,
+@@ -102,6 +104,7 @@ class Node
+ 
+ 		String name() const;
+ 		String clustername() const;
++		unsigned int nodeid() const;
+ 		unsigned int votes() const;
+ 		bool online() const;
+ 		bool clustered() const; // available to cluster
+@@ -116,6 +119,7 @@ class Node
+ 	private:
+ 		String _name;
+ 		String _clustername;
++		unsigned int _nodeid;
+ 		unsigned int _votes;
+ 		bool _online;
+ 		bool _clustered; // available to cluster
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp
+index 6e1ef8d..ba9ff86 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp
+@@ -94,7 +94,7 @@ initialize_table_rhcNodesTable(void)
+ 	/** Define the minimum and maximum accessible columns. This
+ 		optimizes retrival. */
+ 	table_info->min_column = 1;
+-	table_info->max_column = 5;
++	table_info->max_column = 6;
+ 
+ 	/** iterator access routines */
+ 	iinfo->get_first_data_point = rhcNodesTable_get_first_data_point;
+@@ -201,6 +201,17 @@ rhcNodesTable_handler(	netsnmp_mib_handler *handler,
+ 					}
+ 					break;
+ 
++					case COLUMN_RHCNODEID:
++					{
++						long *retval;
++						size_t retval_len = 0;
++						retval = get_rhcNodeID(data_context,
++									&retval_len);
++						snmp_set_var_typed_value(var, ASN_INTEGER,
++								(const u_char *) retval, retval_len);
++					}
++					break;
++
+ 					case COLUMN_RHCNODESTATUSCODE:
+ 					{
+ 						long *retval;
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp
+index a92446f..1bb4c32 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp
+@@ -228,6 +228,25 @@ get_rhcNodeName(void *data_context, size_t * ret_len)
+ }
+ 
+ long*
++get_rhcNodeID(void *data_context, size_t * ret_len)
++{
++  try {
++    DataContext* datactx = (DataContext*) data_context;
++    if (datactx == NULL)
++      return NULL;
++    counting_auto_ptr<Node> node = datactx->getNode();
++    if (node.get() == NULL)
++      return NULL;
++
++    datactx->long_holder = node->nodeid();
++    *ret_len = sizeof(datactx->long_holder);
++    return &datactx->long_holder;
++  } catch ( ... ) {
++    return NULL;
++  }
++}
++
++long*
+ get_rhcNodeRunningServicesNum(void *data_context, size_t * ret_len)
+ {
+   try {
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.h b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.h
+index af41899..0733bd4 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.h
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.h
+@@ -48,6 +48,7 @@ extern "C" {
+ 
+ 	/** column accessors */
+ 	char *get_rhcNodeName(void *data_context, size_t *ret_len);
++	long *get_rhcNodeID(void *data_context, size_t *ret_len);
+ 	long *get_rhcNodeStatusCode(void *data_context, size_t *ret_len);
+ 	char *get_rhcNodeStatusDesc(void *data_context, size_t *ret_len);
+ 	long *get_rhcNodeRunningServicesNum(void *data_context, size_t *ret_len);
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_columns.h b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_columns.h
+index d127af2..df22ff9 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_columns.h
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_columns.h
+@@ -35,5 +35,6 @@
+ #define COLUMN_RHCNODESTATUSDESC				3
+ #define COLUMN_RHCNODERUNNINGSERVICESNUM		4
+ #define COLUMN_RHCNODERUNNINGSERVICESNAMES		5
++#define COLUMN_RHCNODEID				6
+ 
+ #endif
+-- 
+1.6.2.5
+

@@ -1,0 +1,113 @@
+From 9b138274f38b332815591c592f4f7a3ac5b43bc5 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Wed, 12 May 2010 11:21:54 -0400
+Subject: [PATCH 03/16] modclusterd: Add rhcClusterConfigurationVersion handler
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ .../cluster/clumon/src/snmp-agent/clusterMIB.cpp   |   60 +++++++++++++++++++-
+ 1 files changed, 58 insertions(+), 2 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp
+index 370b823..76c9497 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp
+@@ -83,6 +83,8 @@ initialize_clusterMIB(void)
+         { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 19 };
+     static oid      rhcClusterFailedServicesNames_oid[] =
+         { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 20 };
++    static oid      rhcClusterConfigVersion_oid[] =
++        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 21 };
+ 
+     DEBUGMSGTL(("libClusterMonitorSnmp", "Initializing\n"));
+ 
+@@ -162,6 +164,11 @@ initialize_clusterMIB(void)
+                              OID_LENGTH(rhcClusterName_oid),
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
++                            ("rhcClusterConfigVersion", handle_rhcClusterConfigVersion,
++                             rhcClusterConfigVersion_oid,
++                             OID_LENGTH(rhcClusterConfigVersion_oid),
++                             HANDLER_CAN_RONLY));
++    netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterStatusCode",
+                              handle_rhcClusterStatusCode,
+                              rhcClusterStatusCode_oid,
+@@ -285,7 +292,7 @@ handle_rhcMIBVersion(netsnmp_mib_handler *handler,
+ {
+   try {
+ 
+-    unsigned int num = 1;  // MIB version 1
++    unsigned int num = 2;  // MIB version 2
+ 
+     /*
+      * We are never called for a GETNEXT if it's registered as a
+@@ -810,8 +817,9 @@ handle_rhcClusterName(netsnmp_mib_handler *handler,
+ {
+   try {
+     counting_auto_ptr<Cluster> cluster = monitor.get_cluster();
+-    if(cluster.get() == NULL)
++    if(cluster.get() == NULL) {
+       return SNMP_ERR_NOERROR;
++    }
+ 
+     String name = cluster->name();
+ 
+@@ -847,6 +855,54 @@ handle_rhcClusterName(netsnmp_mib_handler *handler,
+   return SNMP_ERR_NOERROR;
+ }
+ 
++
++int
++handle_rhcClusterConfigVersion(netsnmp_mib_handler *handler,
++			       netsnmp_handler_registration *reginfo,
++			       netsnmp_agent_request_info *reqinfo,
++			       netsnmp_request_info *requests)
++{
++  try {
++    counting_auto_ptr<Cluster> cluster = monitor.get_cluster();
++    if(cluster.get() == NULL) {
++      return SNMP_ERR_NOERROR;
++    }
++
++    unsigned int config_version = atoi(cluster->version().c_str());
++
++    /*
++     * We are never called for a GETNEXT if it's registered as a
++     * "instance", as it's "magically" handled for us.
++     */
++
++    /*
++     * a instance handler also only hands us one request at a time, so
++     * we don't need to loop over a list of requests; we'll only get one.
++     */
++
++    switch (reqinfo->mode) {
++
++    case MODE_GET:
++        snmp_set_var_typed_value(requests->requestvb, ASN_INTEGER,
++                                 (u_char *)
++                                 &config_version,
++                                 sizeof(config_version));
++        break;
++
++    default:
++      /*
++       * we should never get here, so this is a really bad error
++       */
++      return SNMP_ERR_GENERR;
++    }
++  }
++  catch( ... ) {
++    return SNMP_ERR_GENERR;
++  }
++  return SNMP_ERR_NOERROR;
++}
++
++
+ int
+ handle_rhcClusterStatusCode(netsnmp_mib_handler *handler,
+                             netsnmp_handler_registration *reginfo,
+-- 
+1.6.2.5
+

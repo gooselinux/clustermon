@@ -1,0 +1,266 @@
+From 6292c26cb1274fb128a13341b01a923cf28a81b0 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Wed, 12 May 2010 11:19:57 -0400
+Subject: [PATCH 02/16] modclusterd: Update REDHAT-CLUSTER-MIB
+
+- fix some (not all) smilint issues
+- add ConfigurationVersion to MIB
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB |   76 +++++++++++++----------
+ 1 files changed, 43 insertions(+), 33 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+index f2252ef..7fdf9de 100644
+--- a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
++++ b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+@@ -2,12 +2,14 @@ REDHAT-CLUSTER-MIB DEFINITIONS ::= BEGIN
+ 
+ 
+ IMPORTS
+-	RedHat					FROM REDHAT-MIB
+-	MODULE-IDENTITY, OBJECT-TYPE, Integer32	FROM SNMPv2-SMI;
++	redhat					FROM REDHAT-MIB
++	MODULE-IDENTITY, OBJECT-TYPE,
++	NOTIFICATION-TYPE,
++	Integer32				FROM SNMPv2-SMI;
+ 
+ 
+-RedHatCluster MODULE-IDENTITY
+-    LAST-UPDATED "200512060000Z"            -- Dec 06 2005, midnight
++redhatCluster MODULE-IDENTITY
++    LAST-UPDATED "201005100000Z"
+     ORGANIZATION "Red Hat, Inc (www.redhat.com)"
+     CONTACT-INFO "postal:   Red Hat, Inc
+ 		   	    1801 Varsity Drive
+@@ -16,18 +18,19 @@ RedHatCluster MODULE-IDENTITY
+ 		  
+ 		  email:    customerservice@redhat.com
+                  "
+-    DESCRIPTION  "Red Hat Cluster Suite MIB
++    DESCRIPTION  "Red Hat Cluster MIB
+                  "
+-    REVISION     "200512060000Z"            -- Dec 06 2005, midnight
+-    DESCRIPTION  "MIB version 1
+-		 "
+-    ::= { RedHat 8 }
++    REVISION     "201005100000Z"
++    DESCRIPTION  "Fix some smilint errors"
++    REVISION     "200512060000Z"
++    DESCRIPTION  "MIB version 1"
++    ::= { redhat 8 }
+ 
+ 
+ 
+-rhcMIBInfo		OBJECT IDENTIFIER ::= { RedHatCluster 1 }
+-rhcCluster		OBJECT IDENTIFIER ::= { RedHatCluster 2 }
+-rhcTables		OBJECT IDENTIFIER ::= { RedHatCluster 3 }
++rhcMIBInfo		OBJECT IDENTIFIER ::= { redhatCluster 1 }
++rhcCluster		OBJECT IDENTIFIER ::= { redhatCluster 2 }
++rhcTables		OBJECT IDENTIFIER ::= { redhatCluster 3 }
+ 	
+ 
+ 
+@@ -48,7 +51,7 @@ rhcMIBVersion OBJECT-TYPE
+ --  #####  Cluster  #####  --
+ 
+ rhcClusterName OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -73,7 +76,7 @@ rhcClusterStatusCode OBJECT-TYPE
+ 	::= { rhcCluster 2 }
+ 
+ rhcClusterStatusDesc OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -116,7 +119,7 @@ rhcClusterNodesNum OBJECT-TYPE
+ 	::= { rhcCluster 7 }
+ 
+ rhcClusterNodesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -132,7 +135,7 @@ rhcClusterAvailNodesNum OBJECT-TYPE
+ 	::= { rhcCluster 9 }
+ 
+ rhcClusterAvailNodesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -148,7 +151,7 @@ rhcClusterUnavailNodesNum OBJECT-TYPE
+ 	::= { rhcCluster 11 }
+ 
+ rhcClusterUnavailNodesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -165,7 +168,7 @@ rhcClusterServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 13 }
+ 
+ rhcClusterServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -181,7 +184,7 @@ rhcClusterRunningServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 15 }
+ 
+ rhcClusterRunningServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -197,7 +200,7 @@ rhcClusterStoppedServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 17 }
+ 
+ rhcClusterStoppedServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -213,19 +216,26 @@ rhcClusterFailedServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 19 }
+ 
+ rhcClusterFailedServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+ 	"Names of failed services"
+ 	::= { rhcCluster 20 }
+ 
++rhcClusterConfigurationVersion OBJECT-TYPE
++	SYNTAX      Integer32
++	MAX-ACCESS  read-only
++	STATUS      current
++	DESCRIPTION
++	"Cluster configuration version"
++	::= { rhcCluster 21 }
+ 
+ 
+ --  ##### nodes #####  --
+ 
+ 
+-rhcNodesTable OBJECT-TYPE
++rhcNodeTable OBJECT-TYPE
+ 	SYNTAX      SEQUENCE OF RhcNodeEntry
+ 	MAX-ACCESS  not-accessible
+ 	STATUS      current
+@@ -240,7 +250,7 @@ rhcNodeEntry OBJECT-TYPE
+ 	DESCRIPTION
+         "Cluster node"
+ 	INDEX   { rhcNodeName }
+-	::= { rhcNodesTable 1 }
++	::= { rhcNodeTable 1 }
+ 
+ RhcNodeEntry ::= SEQUENCE {
+ 	rhcNodeName			OCTET STRING,
+@@ -251,7 +261,7 @@ RhcNodeEntry ::= SEQUENCE {
+ }
+ 
+ rhcNodeName OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -273,7 +283,7 @@ rhcNodeStatusCode OBJECT-TYPE
+ 	::= { rhcNodeEntry 2 }
+ 
+ rhcNodeStatusDesc OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -290,7 +300,7 @@ rhcNodeRunningServicesNum OBJECT-TYPE
+ 	::= { rhcNodeEntry 4 }
+ 
+ rhcNodeRunningServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -302,7 +312,7 @@ rhcNodeRunningServicesNames OBJECT-TYPE
+ --  ##### services #####  --
+ 
+ 
+-rhcServicesTable OBJECT-TYPE
++rhcServiceTable OBJECT-TYPE
+ 	SYNTAX      SEQUENCE OF RhcServiceEntry
+ 	MAX-ACCESS  not-accessible
+ 	STATUS      current
+@@ -317,7 +327,7 @@ rhcServiceEntry OBJECT-TYPE
+ 	DESCRIPTION
+ 	"Cluster service"
+ 	INDEX   { rhcServiceName }
+-	::= { rhcServicesTable 1 }
++	::= { rhcServiceTable 1 }
+ 
+ RhcServiceEntry ::= SEQUENCE {
+ 	rhcServiceName		OCTET STRING,
+@@ -328,7 +338,7 @@ RhcServiceEntry ::= SEQUENCE {
+ }
+ 
+ rhcServiceName OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -349,7 +359,7 @@ rhcServiceStatusCode OBJECT-TYPE
+ 	::= { rhcServiceEntry 2 }
+ 
+ rhcServiceStatusDesc OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -357,7 +367,7 @@ rhcServiceStatusDesc OBJECT-TYPE
+ 	::= { rhcServiceEntry 3 }
+ 
+ rhcServiceStartMode OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -365,14 +375,14 @@ rhcServiceStartMode OBJECT-TYPE
+ 	::= { rhcServiceEntry 4 }
+ 
+ rhcServiceRunningOnNode OBJECT-TYPE
+-	SYNTAX      OCTET STRING
++	SYNTAX      OCTET STRING (SIZE(0..64))
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+ 	"Name of node the service runs on"
+ 	::= { rhcServiceEntry 5 }
+ 
+-
++--  ##### notifications #####  --
+ 
+ 
+ END
+-- 
+1.6.2.5
+

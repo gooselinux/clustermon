@@ -1,0 +1,97 @@
+diff -up ricci-0.16.2/common/ServerSocket.cpp.bz612318 ricci-0.16.2/common/ServerSocket.cpp
+--- clustermon-0.16.2/ricci/common/ServerSocket.cpp.bz612318	2010-01-15 00:32:04.000000000 -0600
++++ clustermon-0.16.2/ricci/common/ServerSocket.cpp	2010-07-09 12:33:43.594579372 -0500
+@@ -30,6 +30,7 @@
+ #include <sys/un.h>
+ #include <netinet/in.h>
+ #include "String.h"
++#include <arpa/inet.h>
+ 
+ 
+ ServerSocket::ServerSocket(const String& sock_path) :
+@@ -77,35 +78,64 @@ ServerSocket::ServerSocket(unsigned shor
+ 	_sock_path("")
+ {
+ 	_sock = socket(PF_INET6, SOCK_STREAM, 0);
++
+ 	if (_sock == -1) {
+-		throw String("ServerSocket(port=") + port
++		_sock = socket(PF_INET, SOCK_STREAM, 0);
++		if (_sock == -1) {
++			throw String("ServerSocket(port=") + port
+ 				+ "): socket() failed: " + String(strerror(errno));
+-	}
+-
+-	int t = 1;
+-	if (setsockopt(_sock, SOL_SOCKET, SO_REUSEADDR, &t, sizeof(t))) {
+-		throw String("ServerSocket(port=") + port
++		} else {
++			int t = 1;
++			if (setsockopt(_sock, SOL_SOCKET, SO_REUSEADDR, &t, sizeof(t))) {
++				throw String("ServerSocket(port=") + port
++					+ "): set SO_REUSEADDR, failed: " + String(strerror(errno));
++			}
++
++
++			sa_family = AF_INET;
++			sa_len = sizeof(struct sockaddr_in);
++			struct sockaddr_in sa_addr4;
++			sa_addr4.sin_family = AF_INET;
++			sa_addr4.sin_port = htons(port);
++			sa_addr4.sin_addr.s_addr = INADDR_ANY;
++
++			if (bind(_sock, (struct sockaddr*)&sa_addr4, sa_len)) {
++				throw String("ServerSocket(port=") + port
++					+ "): bind() failed: " + String(strerror(errno));
++			}
++
++			if (listen(_sock, 5)) {
++				throw String("ServerSocket(port=") + port
++					+ "): listen() failed: " + String(strerror(errno));
++			}
++		}
++	} else {
++		int t = 1;
++		if (setsockopt(_sock, SOL_SOCKET, SO_REUSEADDR, &t, sizeof(t))) {
++			throw String("ServerSocket(port=") + port
+ 				+ "): set SO_REUSEADDR, failed: " + String(strerror(errno));
+-	}
++		}
+ 
+-	sa_family = AF_INET6;
+-	sa_len = sizeof(struct sockaddr_in6);
+-	sa_addr = (struct sockaddr *) calloc(1, sa_len);
+-	if (sa_addr == NULL)
+-		throw String("ServerSocket(port=") + port + "): OOM";
+-	((struct sockaddr_in6 *) sa_addr)->sin6_family = AF_INET6;
+-	((struct sockaddr_in6 *) sa_addr)->sin6_port = htons(port);
+-	((struct sockaddr_in6 *) sa_addr)->sin6_addr = in6addr_any;
++		sa_family = AF_INET6;
++		sa_len = sizeof(struct sockaddr_in6);
++		sa_addr = (struct sockaddr *) calloc(1, sa_len);
++		if (sa_addr == NULL)
++			throw String("ServerSocket(port=") + port + "): OOM";
++		((struct sockaddr_in6 *) sa_addr)->sin6_family = AF_INET6;
++		((struct sockaddr_in6 *) sa_addr)->sin6_port = htons(port);
++		((struct sockaddr_in6 *) sa_addr)->sin6_addr = in6addr_any;
+ 
+-	if (bind(_sock, sa_addr, sa_len)) {
+-		throw String("ServerSocket(port=") + port
++		if (bind(_sock, sa_addr, sa_len)) {
++			throw String("ServerSocket(port=") + port
+ 				+ "): bind() failed: " + String(strerror(errno));
+-	}
++		}
+ 
+-	if (listen(_sock, 5)) {
+-		throw String("ServerSocket(port=") + port
++		if (listen(_sock, 5)) {
++			throw String("ServerSocket(port=") + port
+ 				+ "): listen() failed: " + String(strerror(errno));
+-	}
++		}
++	} 
++
+ 
+ 	//String msg = String("created tcp server socket, ")
+ 	//				+ _sock + ", port " + port;

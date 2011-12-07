@@ -1,0 +1,163 @@
+From 15b2d8b8d08be3362b295887854b3647428b5c7d Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Fri, 14 May 2010 12:22:40 -0400
+Subject: [PATCH 15/16] modclusterd: Cache quorum and vote states
+
+This makes cluster quorum traps actually produce
+information.
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ .../modules/cluster/clumon/src/common/Cluster.cpp  |   54 ++++++++++++++++---
+ ricci/modules/cluster/clumon/src/include/Cluster.h |    8 +++-
+ 2 files changed, 52 insertions(+), 10 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/src/common/Cluster.cpp b/ricci/modules/cluster/clumon/src/common/Cluster.cpp
+index bc3feae..3912063 100644
+--- a/ricci/modules/cluster/clumon/src/common/Cluster.cpp
++++ b/ricci/modules/cluster/clumon/src/common/Cluster.cpp
+@@ -33,16 +33,20 @@ using namespace std;
+ using namespace ClusterMonitoring;
+ 
+ 
+-Cluster::Cluster(	const String &name,
+-					const String &alias,
+-					const String &cluster_version,
+-					unsigned int config_version,
+-					unsigned int minQuorum) :
++Cluster::Cluster(const String &name,
++		 const String &alias,
++		 const String &cluster_version,
++		 unsigned int config_version,
++		 unsigned int votes,
++		 unsigned int minQuorum,
++		 bool quorate) :
+ 	_name(name),
+ 	_alias(alias),
+ 	_cl_version(cluster_version),
+ 	_config_version(config_version),
+-	_minQuorum(minQuorum)
++	_votes(votes),
++	_minQuorum(minQuorum),
++	_quorate(quorate)
+ {
+ 	// add no-node node
+ 	addNode("", 0, 0, false, false, "");
+@@ -87,8 +91,10 @@ Cluster::votes()
+ 		if (cman_get_extra_info(ch, cman_ei, sizeof(info)) == 0)
+ 			total_votes = cman_ei->ei_total_votes;
+ 		cman_finish(ch);
+-		if (total_votes > 0)
++		if (total_votes > 0) {
++			_votes = total_votes;
+ 			return (total_votes);
++		}
+ 	}
+ 
+ 	unsigned int votes = 0;
+@@ -101,10 +107,19 @@ Cluster::votes()
+ 		if (node.clustered())
+ 			votes += node.votes();
+ 	}
++	_votes = votes;
+ 	return votes;
+ }
+ 
+ unsigned int
++Cluster::votes(bool cached)
++{
++	if (cached == true)
++		return _votes;
++	return votes();
++}
++
++unsigned int
+ Cluster::minQuorum()
+ {
+ 	cman_handle_t ch = cman_init(NULL);
+@@ -130,11 +145,20 @@ Cluster::quorate()
+ 	if (ch != NULL) {
+ 		int quorate = cman_is_quorate(ch);
+ 		cman_finish(ch);
++		_quorate = quorate;
+ 		return quorate;
+ 	}
+ 	return false;
+ }
+ 
++bool
++Cluster::quorate(bool cached)
++{
++	if (cached == true) 
++		return _quorate;
++	return quorate();
++}
++
+ counting_auto_ptr<Node>
+ Cluster::addNode(const String& name,
+ 		 unsigned int nodeid,
+@@ -374,11 +398,23 @@ ClusterMonitoring::xml2cluster(const String& xml)
+ 	if (sscanf(clu.get_attr("minQuorum").c_str(), "%u", &minQuorum) != 1)
+ 		throw String("xml2cluster(): invalid value for cluster's minQuorum");
+ 
++
+ 	String alias = clu.get_attr("alias");
+ 	String cl_version = clu.get_attr("cluster_version");
+-	String config_version = clu.get_attr("config_version");
+ 
+-	counting_auto_ptr<Cluster> cluster(new Cluster(name, alias, cl_version, atoi(config_version.c_str()), minQuorum));
++	unsigned int config_version = 0;
++	if (sscanf(clu.get_attr("config_version").c_str(), "%u", &config_version) != 1)
++		config_version = 0;
++
++	unsigned int votes = 0;
++	if (sscanf(clu.get_attr("votes").c_str(), "%u", &votes) != 1)
++		votes = 0;
++
++	bool quorate = false;
++	if (clu.get_attr("quorate") == "true")
++		quorate = true;
++
++	counting_auto_ptr<Cluster> cluster(new Cluster(name, alias, cl_version, config_version, votes, minQuorum, quorate));
+ 
+ 	// nodes
+ 	for (list<XMLObject>::const_iterator
+diff --git a/ricci/modules/cluster/clumon/src/include/Cluster.h b/ricci/modules/cluster/clumon/src/include/Cluster.h
+index ed0b569..7989224 100644
+--- a/ricci/modules/cluster/clumon/src/include/Cluster.h
++++ b/ricci/modules/cluster/clumon/src/include/Cluster.h
+@@ -48,7 +48,9 @@ class Cluster
+ 			const String& alias,
+ 			const String& cluster_version,
+ 			unsigned int config_version,
+-			unsigned int minQuorum=0);
++			unsigned int votes=0,
++			unsigned int minQuorum=0,
++			bool quorate=false);
+ 		virtual ~Cluster();
+ 
+ 		String name();
+@@ -56,8 +58,10 @@ class Cluster
+ 		unsigned int config_version();
+ 		String version();
+ 		unsigned int votes();
++		unsigned int votes(bool cached);
+ 		unsigned int minQuorum();
+ 		bool quorate();
++		bool quorate(bool cached);
+ 
+ 		counting_auto_ptr<Node> addNode(const String& name,
+ 						unsigned int nodeid,
+@@ -86,7 +90,9 @@ class Cluster
+ 		String _alias;
+ 		String _cl_version;
+ 		unsigned int _config_version;
++		unsigned int _votes;
+ 		unsigned int _minQuorum;
++		bool _quorate;
+ 		std::map<String, counting_auto_ptr<Node> > _nodes;
+ };
+ 
+-- 
+1.6.2.5
+

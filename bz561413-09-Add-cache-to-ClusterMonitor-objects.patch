@@ -1,0 +1,145 @@
+From 65be5031d05a7367fc3e1b1388f8fbc66b1a2a11 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Thu, 13 May 2010 13:16:33 -0400
+Subject: [PATCH 09/16] modclusterd: Add cache to ClusterMonitor objects
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ .../cluster/clumon/src/common/ClusterMonitor.cpp   |   49 ++++++++++++++++++-
+ ricci/modules/cluster/clumon/src/daemon/Makefile   |    2 +-
+ .../cluster/clumon/src/include/ClusterMonitor.h    |    9 ++++
+ .../modules/cluster/clumon/src/snmp-agent/Makefile |    2 +-
+ 4 files changed, 57 insertions(+), 5 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/src/common/ClusterMonitor.cpp b/ricci/modules/cluster/clumon/src/common/ClusterMonitor.cpp
+index 15779e4..eff8de2 100644
+--- a/ricci/modules/cluster/clumon/src/common/ClusterMonitor.cpp
++++ b/ricci/modules/cluster/clumon/src/common/ClusterMonitor.cpp
+@@ -26,19 +26,45 @@
+ 
+ #include <errno.h>
+ #include <sys/poll.h>
++#include <sys/types.h>
++#include <sys/time.h>
+ 
+ using namespace ClusterMonitoring;
+ 
+ ClusterMonitor::ClusterMonitor(const String& socket_path) :
+ 	_sock_path(socket_path)
+-{}
++{
++	last_update.tv_sec = 0;
++	last_update.tv_nsec = 0;
++	cache_lifetime = 0;
++}
+ 
+ ClusterMonitor::~ClusterMonitor()
+ {}
+ 
++unsigned int
++ClusterMonitor::expire_cache(unsigned int age)
++{
++	unsigned int ret;
++
++	ret = cache_lifetime;
++	cache_lifetime = age;
++	return ret;
++}
++
+ counting_auto_ptr<Cluster>
+-ClusterMonitor::get_cluster()
++ClusterMonitor::get_cluster(unsigned int age)
+ {
++	struct timespec ts;
++
++	clock_gettime(CLOCK_MONOTONIC, &ts);
++	if (age > 0 && last_update.tv_sec) {
++		if ((ts.tv_nsec - last_update.tv_nsec) < 0)
++			--(ts.tv_sec);
++		if ((ts.tv_sec - last_update.tv_sec) < age)
++			return cached_copy;
++	}
++
+ 	try {
+ 		ClientSocket sock(_sock_path);
+ 
+@@ -81,8 +107,25 @@ ClusterMonitor::get_cluster()
+ 			if (poll_data.revents & (POLLERR | POLLHUP | POLLNVAL))
+ 				throw String("get_cluster(): socket error");
+ 		}
+-		return xml2cluster(xml);
++
++		last_update.tv_sec = ts.tv_sec;
++		last_update.tv_nsec = ts.tv_nsec;
++
++		cached_copy = xml2cluster(xml);
++		return cached_copy;
+ 	} catch ( ... ) {
+ 		return counting_auto_ptr<Cluster>();
+ 	}
+ }
++
++counting_auto_ptr<Cluster>
++ClusterMonitor::get_cluster()
++{
++	return get_cluster(cache_lifetime);
++}
++
++counting_auto_ptr<Cluster>
++ClusterMonitor::get_cache()
++{
++	return cached_copy;
++}
+diff --git a/ricci/modules/cluster/clumon/src/daemon/Makefile b/ricci/modules/cluster/clumon/src/daemon/Makefile
+index 908c65f..08217c4 100644
+--- a/ricci/modules/cluster/clumon/src/daemon/Makefile
++++ b/ricci/modules/cluster/clumon/src/daemon/Makefile
+@@ -22,7 +22,7 @@ OBJECTS = main.o \
+ 
+ INCLUDE += -I../include
+ CXXFLAGS += -DPARANOIA=$(PARANOID)
+-LDFLAGS += ../common/*.o
++LDFLAGS += ../common/*.o -lrt
+ 
+ ifeq ($(PARANOID), 1)
+ 	LDFLAGS += ${top_srcdir}/common/paranoid/*.o
+diff --git a/ricci/modules/cluster/clumon/src/include/ClusterMonitor.h b/ricci/modules/cluster/clumon/src/include/ClusterMonitor.h
+index e011709..dc96a94 100644
+--- a/ricci/modules/cluster/clumon/src/include/ClusterMonitor.h
++++ b/ricci/modules/cluster/clumon/src/include/ClusterMonitor.h
+@@ -39,10 +39,19 @@ class ClusterMonitor
+ 		ClusterMonitor(const String& socket_path=MONITORING_CLIENT_SOCKET);
+ 		virtual ~ClusterMonitor();
+ 
++		// Set cache expiration to age seconds.  0 means 
++		// always refresh when we call get_cluster()
++		unsigned int expire_cache(unsigned int age);
++
+ 		counting_auto_ptr<Cluster> get_cluster();
++		counting_auto_ptr<Cluster> get_cluster(unsigned int age);
++		counting_auto_ptr<Cluster> get_cache();
+ 
+ 	private:
+ 		String _sock_path;
++		struct timespec last_update;
++		counting_auto_ptr<Cluster> cached_copy;
++		unsigned int cache_lifetime;
+ 
+ 		ClusterMonitor(const ClusterMonitor&);
+ 		ClusterMonitor& operator= (const ClusterMonitor&);
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/Makefile b/ricci/modules/cluster/clumon/src/snmp-agent/Makefile
+index 483aa13..159a9d2 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/Makefile
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/Makefile
+@@ -19,7 +19,7 @@ SNMP_LDLAGS = `net-snmp-config --libs`
+ INCLUDE += -I ../include
+ CFLAGS += -fPIC $(SNMP_CFLAGS) -DPARANOIA=$(PARANOID)
+ CXXFLAGS += -fPIC $(SNMP_CFLAGS) -DPARANOIA=$(PARANOID)
+-LDFLAGS += -fPIC -shared $(SNMP_LDLAGS)
++LDFLAGS += -fPIC -shared $(SNMP_LDLAGS) -lrt
+ 
+ ifeq ($(PARANOID), 1)
+ 	LDFLAGS += ${top_srcdir}/common/paranoid/*.o
+-- 
+1.6.2.5
+

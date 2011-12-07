@@ -1,0 +1,85 @@
+diff -upNr clustermon-0.16.2-old/ricci/modules/cluster/ClusterModule.cpp clustermon-0.16.2-new/ricci/modules/cluster/ClusterModule.cpp
+--- clustermon-0.16.2-old/ricci/modules/cluster/ClusterModule.cpp	2010-04-12 15:46:10.397964276 -0500
++++ clustermon-0.16.2-new/ricci/modules/cluster/ClusterModule.cpp	2010-04-12 16:01:03.747964202 -0500
+@@ -31,6 +31,7 @@
+ #include "base64.h"
+ 
+ #include <stdio.h>
++#include <syslog.h>
+ 
+ using namespace std;
+ 
+@@ -138,6 +139,7 @@ set_cluster_conf(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Updating cluster.conf");
+ 	ClusterConf::set(conf, propagate);
+ 	VarMap ret;
+ 	return ret;
+@@ -146,6 +148,7 @@ set_cluster_conf(const VarMap& args)
+ VarMap
+ set_cluster_version(const VarMap& args)
+ {
++	syslog (LOG_NOTICE, "Updating cluster version");
+ 	try {
+ 		VarMap::const_iterator iter = args.find("version");
+ 
+@@ -176,6 +179,7 @@ service_stop(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Stopping service: %s",name.c_str());
+ 	Clusvcadm::stop(name);
+ 	VarMap ret;
+ 	return ret;
+@@ -199,6 +203,8 @@ service_start(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Starting service: %s on node %s",
++		service_name.c_str(), node_name.c_str());
+ 	Clusvcadm::start(service_name, node_name);
+ 	VarMap ret;
+ 	return ret;
+@@ -221,6 +227,8 @@ service_migrate(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Migrating service: %s on node %s",
++		service_name.c_str(), node_name.c_str());
+ 	Clusvcadm::migrate(service_name, node_name);
+ 	VarMap ret;
+ 	return ret;
+@@ -239,6 +247,7 @@ service_restart(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Restarting service: %s", name.c_str());
+ 	Clusvcadm::restart(name);
+ 	VarMap ret;
+ 	return ret;
+@@ -346,6 +355,7 @@ fence_node(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Fencing node: %s", name.c_str());
+ 	Fence::fence_node(name);
+ 	VarMap ret;
+ 	return ret;
+@@ -369,6 +379,7 @@ start_node(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Starting node");
+ 	Cluster::start_node(cluster_startup, enable_services);
+ 
+ 	VarMap ret;
+@@ -398,6 +409,7 @@ stop_node(const VarMap& args)
+ 		throw APIerror(e);
+ 	}
+ 
++	syslog (LOG_NOTICE, "Stopping node");
+ 	Cluster::stop_node(cluster_shutdown, purge_conf, disable_services);
+ 	VarMap ret;
+ 	return ret;

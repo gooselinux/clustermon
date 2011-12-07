@@ -1,0 +1,496 @@
+From 532d59652f34e90fb0a327715b6cfa7877ccf1f4 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Fri, 14 May 2010 10:37:18 -0400
+Subject: [PATCH 12/16] modclusterd: Put OIDs in one place.
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ .../modules/cluster/clumon/src/snmp-agent/Makefile |   15 +++-
+ .../cluster/clumon/src/snmp-agent/clusterMIB.cpp   |   93 +++++---------------
+ .../clumon/src/snmp-agent/clusterMonitorSnmp.cpp   |   34 ++++---
+ .../cluster/clumon/src/snmp-agent/nodesMIB.cpp     |    5 +-
+ .../cluster/clumon/src/snmp-agent/rhc_oid.cpp      |   94 ++++++++++++++++++++
+ .../cluster/clumon/src/snmp-agent/servicesMIB.cpp  |    6 +-
+ 6 files changed, 153 insertions(+), 94 deletions(-)
+ create mode 100644 ricci/modules/cluster/clumon/src/snmp-agent/rhc_oid.cpp
+
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/Makefile b/ricci/modules/cluster/clumon/src/snmp-agent/Makefile
+index 159a9d2..727a641 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/Makefile
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/Makefile
+@@ -39,7 +39,8 @@ OBJECTS = clusterMonitorSnmp.o \
+ 	servicesMIB.o \
+ 	servicesMIB_access.o \
+ 	servicesMIB_checkfns.o \
+-	servicesMIB_checkfns_local.o
++	servicesMIB_checkfns_local.o \
++	rhc_oid.o
+ 
+ TARGET = libClusterMonitorSnmp.so
+ 
+@@ -54,11 +55,21 @@ uninstall:
+ 	${UNINSTALL} ${TARGET} ${libdir}/cluster-snmp
+ 
+ clean:
++	rm -f rhc_oid.h
+ 	rm -f $(OBJECTS) $(TARGET)
+ 
++rhc_oid.h: rhc_oid.cpp
++	echo "// Automatically generated " > rhc_oid.h
++	echo "#ifndef _RHC_OID_H" >> rhc_oid.h
++	echo "#define _RHC_OID_H" >> rhc_oid.h
++	echo "extern \"C\" {" >> rhc_oid.h
++	sed -e 's/^#.*//' -e 's/^\([a-zA-Z]\)/extern \1/' -e 's/].*;/\];/' -e 's/_len.*;/_len;/' rhc_oid.cpp >> rhc_oid.h
++	echo "};" >> rhc_oid.h
++	echo "#endif" >> rhc_oid.h
++
+ check:
+ 
+ rebuild: clean all
+ 
+-$(TARGET): $(OBJECTS)
++$(TARGET): rhc_oid.h $(OBJECTS)
+ 	$(CXX) $(LDFLAGS) -o $@ $(OBJECTS)
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp
+index 115d256..91c7034 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.cpp
+@@ -27,7 +27,7 @@
+ 
+ #include "clusterMIB.h"
+ #include "clusterMonitorSnmp.h"
+-
++#include "rhc_oid.h"
+ 
+ using namespace ClusterMonitoring;
+ using namespace std;
+@@ -40,182 +40,135 @@ static String getStatusDescription(unsigned int code);
+ void
+ initialize_clusterMIB(void)
+ {
+-    static oid      rhcMIBVersion_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 1, 1 };
+-
+-    static oid      rhcClusterName_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 1 };
+-    static oid      rhcClusterStatusCode_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 2 };
+-    static oid      rhcClusterStatusDesc_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 3 };
+-    static oid      rhcClusterVotesNeededForQuorum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 4 };
+-    static oid      rhcClusterVotes_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 5 };
+-    static oid      rhcClusterQuorate_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 6 };
+-    static oid      rhcClusterNodesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 7 };
+-    static oid      rhcClusterNodesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 8 };
+-    static oid      rhcClusterAvailNodesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 9 };
+-    static oid      rhcClusterAvailNodesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 10 };
+-    static oid      rhcClusterUnavailNodesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 11 };
+-    static oid      rhcClusterUnavailNodesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 12 };
+-    static oid      rhcClusterServicesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 13 };
+-    static oid      rhcClusterServicesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 14 };
+-    static oid      rhcClusterRunningServicesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 15 };
+-    static oid      rhcClusterRunningServicesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 16 };
+-    static oid      rhcClusterStoppedServicesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 17 };
+-    static oid      rhcClusterStoppedServicesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 18 };
+-    static oid      rhcClusterFailedServicesNum_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 19 };
+-    static oid      rhcClusterFailedServicesNames_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 20 };
+-    static oid      rhcClusterConfigVersion_oid[] =
+-        { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 21 };
+-
+     DEBUGMSGTL(("libClusterMonitorSnmp", "Initializing\n"));
+ 
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcMIBVersion",
+                              handle_rhcMIBVersion,
+                              rhcMIBVersion_oid,
+-                             OID_LENGTH(rhcMIBVersion_oid),
++                             rhcMIBVersion_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterFailedServicesNum",
+                              handle_rhcClusterFailedServicesNum,
+                              rhcClusterFailedServicesNum_oid,
+-                             OID_LENGTH(rhcClusterFailedServicesNum_oid),
++                             rhcClusterFailedServicesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterFailedServicesNames",
+                              handle_rhcClusterFailedServicesNames,
+                              rhcClusterFailedServicesNames_oid,
+-                             OID_LENGTH(rhcClusterFailedServicesNames_oid),
++                             rhcClusterFailedServicesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterStatusDesc",
+                              handle_rhcClusterStatusDesc,
+                              rhcClusterStatusDesc_oid,
+-                             OID_LENGTH(rhcClusterStatusDesc_oid),
++                             rhcClusterStatusDesc_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterVotes", handle_rhcClusterVotes,
+                              rhcClusterVotes_oid,
+-                             OID_LENGTH(rhcClusterVotes_oid),
++                             rhcClusterVotes_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterQuorate", handle_rhcClusterQuorate,
+                              rhcClusterQuorate_oid,
+-                             OID_LENGTH(rhcClusterQuorate_oid),
++                             rhcClusterQuorate_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterStoppedServicesNum",
+                              handle_rhcClusterStoppedServicesNum,
+                              rhcClusterStoppedServicesNum_oid,
+-                             OID_LENGTH(rhcClusterStoppedServicesNum_oid),
++                             rhcClusterStoppedServicesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterStoppedServicesNames",
+                              handle_rhcClusterStoppedServicesNames,
+                              rhcClusterStoppedServicesNames_oid,
+-                             OID_LENGTH(rhcClusterStoppedServicesNames_oid),
++                             rhcClusterStoppedServicesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterAvailNodesNum",
+                              handle_rhcClusterAvailNodesNum,
+                              rhcClusterAvailNodesNum_oid,
+-                             OID_LENGTH(rhcClusterAvailNodesNum_oid),
++                             rhcClusterAvailNodesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterAvailNodesNames",
+                              handle_rhcClusterAvailNodesNames,
+                              rhcClusterAvailNodesNames_oid,
+-                             OID_LENGTH(rhcClusterAvailNodesNames_oid),
++                             rhcClusterAvailNodesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterServicesNum",
+                              handle_rhcClusterServicesNum,
+                              rhcClusterServicesNum_oid,
+-                             OID_LENGTH(rhcClusterServicesNum_oid),
++                             rhcClusterServicesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterServicesNames",
+                              handle_rhcClusterServicesNames,
+                              rhcClusterServicesNames_oid,
+-                             OID_LENGTH(rhcClusterServicesNames_oid),
++                             rhcClusterServicesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterName", handle_rhcClusterName,
+                              rhcClusterName_oid,
+-                             OID_LENGTH(rhcClusterName_oid),
++                             rhcClusterName_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterConfigVersion", handle_rhcClusterConfigVersion,
+                              rhcClusterConfigVersion_oid,
+-                             OID_LENGTH(rhcClusterConfigVersion_oid),
++                             rhcClusterConfigVersion_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterStatusCode",
+                              handle_rhcClusterStatusCode,
+                              rhcClusterStatusCode_oid,
+-                             OID_LENGTH(rhcClusterStatusCode_oid),
++                             rhcClusterStatusCode_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterUnavailNodesNum",
+                              handle_rhcClusterUnavailNodesNum,
+                              rhcClusterUnavailNodesNum_oid,
+-                             OID_LENGTH(rhcClusterUnavailNodesNum_oid),
++                             rhcClusterUnavailNodesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterUnavailNodesNames",
+                              handle_rhcClusterUnavailNodesNames,
+                              rhcClusterUnavailNodesNames_oid,
+-                             OID_LENGTH(rhcClusterUnavailNodesNames_oid),
++                             rhcClusterUnavailNodesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterNodesNum",
+                              handle_rhcClusterNodesNum,
+                              rhcClusterNodesNum_oid,
+-                             OID_LENGTH(rhcClusterNodesNum_oid),
++                             rhcClusterNodesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterNodesNames",
+                              handle_rhcClusterNodesNames,
+                              rhcClusterNodesNames_oid,
+-                             OID_LENGTH(rhcClusterNodesNames_oid),
++                             rhcClusterNodesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterRunningServicesNum",
+                              handle_rhcClusterRunningServicesNum,
+                              rhcClusterRunningServicesNum_oid,
+-                             OID_LENGTH(rhcClusterRunningServicesNum_oid),
++                             rhcClusterRunningServicesNum_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterRunningServicesNames",
+                              handle_rhcClusterRunningServicesNames,
+                              rhcClusterRunningServicesNames_oid,
+-                             OID_LENGTH(rhcClusterRunningServicesNames_oid),
++                             rhcClusterRunningServicesNames_len,
+                              HANDLER_CAN_RONLY));
+     netsnmp_register_scalar(netsnmp_create_handler_registration
+                             ("rhcClusterVotesNeededForQuorum",
+                              handle_rhcClusterVotesNeededForQuorum,
+                              rhcClusterVotesNeededForQuorum_oid,
+-                             OID_LENGTH
+-                             (rhcClusterVotesNeededForQuorum_oid),
++                             rhcClusterVotesNeededForQuorum_len,
+                              HANDLER_CAN_RONLY));
+ }
+ 
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
+index 8c89c81..36fabb3 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
+@@ -27,33 +27,32 @@
+ #include "clumond_globals.h"
+ #include <syslog.h>
+ #include "Cluster.h"
++#include "rhc_oid.h"
+ 
+ using namespace ClusterMonitoring;
+ 
+ ClusterMonitoring::ClusterMonitor monitor;
+ 
+ 
+-void
+-config_update_trap(unsigned int new_version)
++static void
++init_trap(netsnmp_variable_list **vars, oid notif[], size_t notif_len)
+ {
+-	/* Needs to be addd to ALL snmp notifications I guess? */
+-	oid objid_snmptrap[] = { 1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0 };
+-	size_t objid_snmptrap_len = OID_LENGTH(objid_snmptrap);
+-
+-	oid notification_oid[] = { 1, 3, 6, 1, 4, 1, 2312, 8, 0, 1 };
+-	size_t notification_oid_len = OID_LENGTH(notification_oid);
++	snmp_varlist_add_variable(vars, snmp_trap, snmp_trap_len,
++				  ASN_OBJECT_ID,
++				  (u_char *)notif, notif_len * sizeof(oid));
++}
+ 
+-	oid config_version[] = { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 21 };
+-	size_t cvlen = OID_LENGTH(config_version);
+ 
++void
++config_update_trap(unsigned int new_version)
++{
+ 	netsnmp_variable_list *vars = NULL;
+ 
+-	snmp_varlist_add_variable(&vars, objid_snmptrap, objid_snmptrap_len,
+-				  ASN_OBJECT_ID,
+-				  (u_char *)notification_oid,
+-				  notification_oid_len * sizeof(oid));
++	init_trap(&vars, rhcConfigVersion_trap, rhcConfigVersion_len);
+ 
+-	snmp_varlist_add_variable(&vars, config_version, cvlen,
++	snmp_varlist_add_variable(&vars,
++				  rhcClusterConfigVersion_oid,
++				  rhcClusterConfigVersion_len,
+ 				  ASN_INTEGER,
+ 				  (u_char *)&new_version,
+ 				  sizeof(new_version));
+@@ -96,3 +95,8 @@ init_RedHatCluster(void)
+ 
+ 	} catch ( ... ) {}
+ }
++
++void
++init_redhatCluster(void) {
++	init_RedHatCluster();
++}
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp
+index ba9ff86..5e38a13 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB.cpp
+@@ -27,6 +27,7 @@
+ #include "nodesMIB.h"
+ #include "nodesMIB_checkfns.h"
+ #include "nodesMIB_access.h"
++#include "rhc_oid.h"
+ 
+ void
+ initialize_nodesMIB(void)
+@@ -62,7 +63,6 @@ rhcNodesTable_free_undoInfo(void *vptr)
+ void
+ initialize_table_rhcNodesTable(void)
+ {
+-	static oid rhcNodesTable_oid[] = { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1 };
+ 	netsnmp_table_registration_info *table_info;
+ 	netsnmp_handler_registration *my_handler;
+ 	netsnmp_iterator_info *iinfo;
+@@ -76,8 +76,7 @@ initialize_table_rhcNodesTable(void)
+ 	my_handler = netsnmp_create_handler_registration("rhcNodesTable",
+ 					rhcNodesTable_handler,
+ 					rhcNodesTable_oid,
+-					OID_LENGTH
+-					(rhcNodesTable_oid),
++					rhcNodesTable_len,
+ 					HANDLER_CAN_RONLY);
+ 
+ 	if (!my_handler || !table_info || !iinfo) {
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/rhc_oid.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/rhc_oid.cpp
+new file mode 100644
+index 0000000..6c1dcc7
+--- /dev/null
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/rhc_oid.cpp
+@@ -0,0 +1,94 @@
++#include <net-snmp/net-snmp-config.h>
++#include <net-snmp/net-snmp-includes.h>
++#include <net-snmp/agent/net-snmp-agent-includes.h>
++
++/* SNMP OIDs we need to know about */
++oid snmp_trap[]				= { 1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0 };
++size_t snmp_trap_len			= OID_LENGTH(snmp_trap);
++
++/* Traps */
++oid rhcConfigVersion_trap[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 0, 1 };
++size_t rhcConfigVersion_len		= OID_LENGTH(rhcConfigVersion_trap);
++
++oid rhcQuorumState_trap[]			= { 1, 3, 6, 1, 4, 1, 2312, 8, 0, 2 };
++size_t rhcQuorumState_len			= OID_LENGTH(rhcQuorumState_trap);
++
++oid rhcNodeState_trap[]			= { 1, 3, 6, 1, 4, 1, 2312, 8, 0, 3 };
++size_t rhcNodeState_len			= OID_LENGTH(rhcNodeState_trap);
++
++oid rhcServiceState_trap[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 0, 4 };
++size_t rhcServiceState_len		= OID_LENGTH(rhcServiceState_trap);
++
++/* Objects */
++oid rhcMIBVersion_oid[]			= { 1, 3, 6, 1, 4, 1, 2312, 8, 1, 1 };
++size_t rhcMIBVersion_len			= OID_LENGTH(rhcMIBVersion_oid);
++
++oid rhcClusterName_oid[]			= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 1 };
++size_t rhcClusterName_len			= OID_LENGTH(rhcClusterName_oid);
++
++oid rhcClusterStatusCode_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 2 };
++size_t rhcClusterStatusCode_len		= OID_LENGTH(rhcClusterStatusCode_oid);
++
++oid rhcClusterStatusDesc_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 3 };
++size_t rhcClusterStatusDesc_len		= OID_LENGTH(rhcClusterStatusDesc_oid);
++
++oid rhcClusterVotesNeededForQuorum_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 4 };
++size_t rhcClusterVotesNeededForQuorum_len	= OID_LENGTH(rhcClusterVotesNeededForQuorum_oid);
++
++oid rhcClusterVotes_oid[]			= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 5 };
++size_t rhcClusterVotes_len		= OID_LENGTH(rhcClusterVotes_oid);
++
++oid rhcClusterQuorate_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 6 };
++size_t rhcClusterQuorate_len		= OID_LENGTH(rhcClusterQuorate_oid);
++
++oid rhcClusterNodesNum_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 7 };
++size_t rhcClusterNodesNum_len		= OID_LENGTH(rhcClusterNodesNum_oid);
++
++oid rhcClusterNodesNames_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 8 };
++size_t rhcClusterNodesNames_len		= OID_LENGTH(rhcClusterNodesNames_oid);
++
++oid rhcClusterAvailNodesNum_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 9 };
++size_t rhcClusterAvailNodesNum_len	= OID_LENGTH(rhcClusterAvailNodesNum_oid);
++
++oid rhcClusterAvailNodesNames_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 10 };
++size_t rhcClusterAvailNodesNames_len	= OID_LENGTH(rhcClusterAvailNodesNames_oid);
++
++oid rhcClusterUnavailNodesNum_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 11 };
++size_t rhcClusterUnavailNodesNum_len	= OID_LENGTH(rhcClusterUnavailNodesNum_oid);
++
++oid rhcClusterUnavailNodesNames_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 12 };
++size_t rhcClusterUnavailNodesNames_len	= OID_LENGTH(rhcClusterUnavailNodesNames_oid);
++
++oid rhcClusterServicesNum_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 13 };
++size_t rhcClusterServicesNum_len		= OID_LENGTH(rhcClusterServicesNum_oid);
++
++oid rhcClusterServicesNames_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 14 };
++size_t rhcClusterServicesNames_len	= OID_LENGTH(rhcClusterServicesNames_oid);
++
++oid rhcClusterRunningServicesNum_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 15 };
++size_t rhcClusterRunningServicesNum_len	= OID_LENGTH(rhcClusterRunningServicesNum_oid);
++
++oid rhcClusterRunningServicesNames_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 16 };
++size_t rhcClusterRunningServicesNames_len	= OID_LENGTH(rhcClusterRunningServicesNames_oid);
++
++oid rhcClusterStoppedServicesNum_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 17 };
++size_t rhcClusterStoppedServicesNum_len	= OID_LENGTH(rhcClusterStoppedServicesNum_oid);
++
++oid rhcClusterStoppedServicesNames_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 18 };
++size_t rhcClusterStoppedServicesNames_len	= OID_LENGTH(rhcClusterStoppedServicesNames_oid);
++
++oid rhcClusterFailedServicesNum_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 19 };
++size_t rhcClusterFailedServicesNum_len	= OID_LENGTH(rhcClusterFailedServicesNum_oid);
++
++oid rhcClusterFailedServicesNames_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 20 };
++size_t rhcClusterFailedServicesNames_len	= OID_LENGTH(rhcClusterFailedServicesNames_oid);
++
++oid rhcClusterConfigVersion_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 2, 21 };
++size_t rhcClusterConfigVersion_len	= OID_LENGTH(rhcClusterConfigVersion_oid);
++
++/* Tables */
++oid rhcNodesTable_oid[]			= { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1 };
++size_t rhcNodesTable_len			= OID_LENGTH(rhcNodesTable_oid);
++
++oid rhcServicesTable_oid[]		= { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2 };
++size_t rhcServicesTable_len		= OID_LENGTH(rhcServicesTable_oid);
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB.cpp
+index 0f57bd4..26b37cd 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB.cpp
+@@ -28,6 +28,7 @@
+ #include "servicesMIB.h"
+ #include "servicesMIB_checkfns.h"
+ #include "servicesMIB_access.h"
++#include "rhc_oid.h"
+ 
+ void
+ initialize_servicesMIB(void)
+@@ -63,8 +64,6 @@ rhcServicesTable_free_undoInfo(void *vptr)
+ void
+ initialize_table_rhcServicesTable(void)
+ {
+-	static oid rhcServicesTable_oid[] =
+-		{ 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2 };
+ 	netsnmp_table_registration_info *table_info;
+ 	netsnmp_handler_registration *my_handler;
+ 	netsnmp_iterator_info *iinfo;
+@@ -78,8 +77,7 @@ initialize_table_rhcServicesTable(void)
+ 	my_handler = netsnmp_create_handler_registration("rhcServicesTable",
+ 													 rhcServicesTable_handler,
+ 													 rhcServicesTable_oid,
+-													 OID_LENGTH
+-													 (rhcServicesTable_oid),
++													 rhcServicesTable_len,
+ 													 HANDLER_CAN_RONLY);
+ 
+ 	if (!my_handler || !table_info || !iinfo) {
+-- 
+1.6.2.5
+

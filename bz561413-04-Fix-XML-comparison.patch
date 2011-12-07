@@ -1,0 +1,114 @@
+From 43bd13710dc42d2ed964fb8cf5c0b2e7bb59bd01 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Wed, 12 May 2010 11:25:07 -0400
+Subject: [PATCH 04/16] modclusterd: Fix XML comparison
+
+- attributes should be able to be in any order
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/common/XML.cpp |   52 +++++++++++++++++++++++++++++++++++++++++++++++--
+ ricci/include/XML.h  |    2 +
+ 2 files changed, 51 insertions(+), 3 deletions(-)
+
+diff --git a/ricci/common/XML.cpp b/ricci/common/XML.cpp
+index 05ad0a8..effcfc5 100644
+--- a/ricci/common/XML.cpp
++++ b/ricci/common/XML.cpp
+@@ -43,18 +43,63 @@ XMLObject::XMLObject(const String& elem_name) :
+ XMLObject::~XMLObject()
+ {}
+ 
++
++// Compare attributes against a different XMLObject
++// Make a copy of the right side's attrs and remove 
++// any duplicates found.
++//
++// If the list is nonempty when we're done, the lists
++// differ.
++bool
++XMLObject::compare_attrs(const XMLObject& other) const
++{
++	std::map<String, String> left = attrs();
++	std::map<String, String> right = other.attrs();
++
++	if (left.size() != right.size())
++	    	return false;
++
++	for (map<String, String>::const_iterator x = left.begin();
++	     x != left.end(); x++) {
++
++		map<String, String>::const_iterator y = right.find(x->first);
++
++		/* not present */
++		if (y == right.end())
++			return false;
++
++		if (x->second != y->second)
++			return false;
++	}
++
++	return true;
++}
++
++
+ bool
+ XMLObject::operator== (const XMLObject& obj) const
+ {
+-	if (children() != obj.children())
++	if (tag() != obj.tag()) {
+ 		return false;
+-	if (tag() != obj.tag())
++	}
++
++	if (compare_attrs(obj) != true) {
+ 		return false;
+-	if (attrs() != obj.attrs())
++	}
++	
++	if (children() != obj.children())
+ 		return false;
+ 	return true;
+ }
+ 
++
++bool
++XMLObject::operator!= (const XMLObject& obj) const
++{
++	return !(operator==(obj));
++}
++
++
+ bool
+ XMLObject::has_attr(const String& attr_name) const
+ {
+@@ -202,6 +247,7 @@ parseXML(const String& xml)
+ 	}
+ }
+ 
++
+ String
+ generateXML(const XMLObject& obj)
+ {
+diff --git a/ricci/include/XML.h b/ricci/include/XML.h
+index 93d1782..7fd9634 100644
+--- a/ricci/include/XML.h
++++ b/ricci/include/XML.h
+@@ -58,12 +58,14 @@ class XMLObject
+ 		}
+ 
+ 		bool operator== (const XMLObject&) const;
++		bool operator!= (const XMLObject&) const;
+ 
+ 	private:
+ 		String _tag;
+ 		std::list<XMLObject> _kids;
+ 		std::map<String, String> _attrs;
+ 		void generate_xml(String& xml, const String& indent) const;
++		bool compare_attrs(const XMLObject& other) const;
+ 	friend String generateXML(const XMLObject& obj);
+ };
+ 
+-- 
+1.6.2.5
+

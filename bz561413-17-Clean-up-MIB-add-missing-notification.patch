@@ -1,0 +1,390 @@
+From 895346abd38571ea2495d48b28f3ccfb3abd4368 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Tue, 18 May 2010 13:50:35 -0400
+Subject: [PATCH 2/2] modclusterd: Clean up MIB & add missing notifications
+
+Resolves: bz561413
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB    |  147 ++++++++++++--------
+ .../clumon/src/snmp-agent/clusterMonitorSnmp.cpp   |   26 ++--
+ 2 files changed, 98 insertions(+), 75 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+index 21fa811..154bd60 100644
+--- a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
++++ b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+@@ -29,10 +29,10 @@ redhatCluster MODULE-IDENTITY
+ 
+ 
+ 
++rhcNotifications	OBJECT IDENTIFIER ::= { redhatCluster 0 }
+ rhcMIBInfo		OBJECT IDENTIFIER ::= { redhatCluster 1 }
+ rhcCluster		OBJECT IDENTIFIER ::= { redhatCluster 2 }
+ rhcTables		OBJECT IDENTIFIER ::= { redhatCluster 3 }
+-rhcNotifications	OBJECT IDENTIFIER ::= { redhatCluster 0 }
+ 
+ rhcConformance		OBJECT IDENTIFIER ::= { redhatCluster 8 }
+ 
+@@ -53,7 +53,7 @@ rhcMIBVersion OBJECT-TYPE
+ --  #####  Cluster  #####  --
+ 
+ rhcClusterName OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -78,7 +78,7 @@ rhcClusterStatusCode OBJECT-TYPE
+ 	::= { rhcCluster 2 }
+ 
+ rhcClusterStatusDesc OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -121,7 +121,7 @@ rhcClusterNodesNum OBJECT-TYPE
+ 	::= { rhcCluster 7 }
+ 
+ rhcClusterNodesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -137,7 +137,7 @@ rhcClusterAvailNodesNum OBJECT-TYPE
+ 	::= { rhcCluster 9 }
+ 
+ rhcClusterAvailNodesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -153,7 +153,7 @@ rhcClusterUnavailNodesNum OBJECT-TYPE
+ 	::= { rhcCluster 11 }
+ 
+ rhcClusterUnavailNodesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -170,7 +170,7 @@ rhcClusterServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 13 }
+ 
+ rhcClusterServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -186,7 +186,7 @@ rhcClusterRunningServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 15 }
+ 
+ rhcClusterRunningServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -202,7 +202,7 @@ rhcClusterStoppedServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 17 }
+ 
+ rhcClusterStoppedServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -218,7 +218,7 @@ rhcClusterFailedServicesNum OBJECT-TYPE
+ 	::= { rhcCluster 19 }
+ 
+ rhcClusterFailedServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -233,6 +233,8 @@ rhcClusterConfigurationVersion OBJECT-TYPE
+ 	"Cluster configuration version"
+ 	::= { rhcCluster 21 }
+ 
++
++
+ --  ##### nodes #####  --
+ 
+ 
+@@ -285,7 +287,7 @@ rhcNodeStatusCode OBJECT-TYPE
+ 	::= { rhcNodeEntry 2 }
+ 
+ rhcNodeStatusDesc OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -301,7 +303,7 @@ rhcNodeRunningServicesNum OBJECT-TYPE
+ 	::= { rhcNodeEntry 4 }
+ 
+ rhcNodeRunningServicesNames OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -368,7 +370,7 @@ rhcServiceStatusCode OBJECT-TYPE
+ 	::= { rhcServiceEntry 2 }
+ 
+ rhcServiceStatusDesc OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -376,7 +378,7 @@ rhcServiceStatusDesc OBJECT-TYPE
+ 	::= { rhcServiceEntry 3 }
+ 
+ rhcServiceStartMode OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -384,7 +386,7 @@ rhcServiceStartMode OBJECT-TYPE
+ 	::= { rhcServiceEntry 4 }
+ 
+ rhcServiceRunningOnNode OBJECT-TYPE
+-	SYNTAX      OCTET STRING (SIZE(0..64))
++	SYNTAX      OCTET STRING
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+@@ -399,6 +401,30 @@ rhcConfigUpdate NOTIFICATION-TYPE
+ 	DESCRIPTION "Cluster configuration update"
+         ::= { rhcNotifications 1 }
+ 
++rhcQuorumUpdate NOTIFICATION-TYPE
++        OBJECTS { rhcClusterQuorate }
++	STATUS current
++	DESCRIPTION "Quorum state change"
++        ::= { rhcNotifications 2 }
++
++rhcNodeStatusUpdate NOTIFICATION-TYPE
++        OBJECTS { rhcClusterNodesNames,
++		  rhcNodeStatusCode,
++		  rhcNodeID
++		}
++	STATUS current
++	DESCRIPTION "Cluster node state change"
++        ::= { rhcNotifications 3 }
++
++rhcServiceStatusUpdate NOTIFICATION-TYPE
++        OBJECTS { rhcClusterServicesNames,
++		  rhcServiceStatusDesc,
++		  rhcServiceRunningOnNode
++		}
++	STATUS current
++	DESCRIPTION "Cluster service state change"
++        ::= { rhcNotifications 4 }
++
+ 
+ 
+ -- CONFORMANCE
+@@ -408,60 +434,59 @@ rhcCompliances OBJECT IDENTIFIER ::= { rhcConformance 1 }
+ rhcGroups OBJECT IDENTIFIER ::= { rhcConformance 2 }
+ 
+ rhcCompliance MODULE-COMPLIANCE
+-    STATUS      current
+-    DESCRIPTION "Red Hat Clustering Compliance Information"
+-    MODULE     -- this module
+-    MANDATORY-GROUPS { rhcObjectGroup, rhcNotificationGroup }
+-
+-    ::= { rhcCompliances 1 }
++	STATUS      current
++	DESCRIPTION "Red Hat Clustering Compliance Information"
++	MODULE     -- this module
++	MANDATORY-GROUPS { rhcObjectGroup, rhcNotificationGroup }
++	::= { rhcCompliances 1 }
+ 
+ rhcObjectGroup OBJECT-GROUP
+-    OBJECTS {
+-	rhcMIBVersion,
+-	rhcClusterName,
+-	rhcClusterStatusCode,
+-	rhcClusterStatusDesc,
+-	rhcClusterVotesNeededForQuorum,
+-	rhcClusterVotes,
+-	rhcClusterQuorate,
+-	rhcClusterNodesNum,
+-	rhcClusterNodesNames,
+-	rhcClusterAvailNodesNum,
+-	rhcClusterAvailNodesNames,
+-	rhcClusterUnavailNodesNum,
+-	rhcClusterUnavailNodesNames,
+-	rhcClusterServicesNum,
+-	rhcClusterServicesNames,
+-	rhcClusterRunningServicesNum,
+-	rhcClusterRunningServicesNames,
+-	rhcClusterStoppedServicesNum,
+-	rhcClusterStoppedServicesNames,
+-	rhcClusterFailedServicesNum,
+-	rhcClusterFailedServicesNames,
+-	rhcClusterConfigurationVersion,
+-	rhcNodeStatusCode,
+-	rhcNodeStatusDesc,
+-	rhcNodeRunningServicesNum,
+-	rhcNodeRunningServicesNames,
+-	rhcNodeID,
+-	rhcServiceStatusCode,
+-	rhcServiceStatusDesc,
+-	rhcServiceStartMode,
+-	rhcServiceRunningOnNode
+-    }
+-    STATUS      current
+-    DESCRIPTION "Red Hat Clustering Objects"
+-    ::= { rhcGroups 1 }
++	OBJECTS { rhcMIBVersion,
++		  rhcClusterName,
++		  rhcClusterStatusCode,
++		  rhcClusterStatusDesc,
++		  rhcClusterVotesNeededForQuorum,
++		  rhcClusterVotes,
++		  rhcClusterQuorate,
++		  rhcClusterNodesNum,
++		  rhcClusterNodesNames,
++		  rhcClusterAvailNodesNum,
++		  rhcClusterAvailNodesNames,
++		  rhcClusterUnavailNodesNum,
++		  rhcClusterUnavailNodesNames,
++		  rhcClusterServicesNum,
++		  rhcClusterServicesNames,
++		  rhcClusterRunningServicesNum,
++		  rhcClusterRunningServicesNames,
++		  rhcClusterStoppedServicesNum,
++		  rhcClusterStoppedServicesNames,
++		  rhcClusterFailedServicesNum,
++		  rhcClusterFailedServicesNames,
++		  rhcClusterConfigurationVersion,
++		  rhcNodeStatusCode,
++		  rhcNodeStatusDesc,
++		  rhcNodeRunningServicesNum,
++		  rhcNodeRunningServicesNames,
++		  rhcNodeID,
++		  rhcServiceStatusCode,
++		  rhcServiceStatusDesc,
++		  rhcServiceStartMode,
++		  rhcServiceRunningOnNode
++    		}
++	STATUS      current
++	DESCRIPTION "Red Hat Clustering Objects"
++	::= { rhcGroups 1 }
+ 
+ rhcNotificationGroup NOTIFICATION-GROUP
+-    NOTIFICATIONS {
+-	rhcConfigUpdate
+-    }
++	NOTIFICATIONS { rhcConfigUpdate,
++			rhcQuorumUpdate,
++			rhcNodeStatusUpdate,	
++			rhcServiceStatusUpdate
++		      }
+     STATUS	current
+     DESCRIPTION "Red Hat Clustering Notifications"
+     ::= { rhcGroups 2 }
+ 
+-
+ END
+ 
+ 
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
+index aeb27af..8949595 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
+@@ -84,7 +84,6 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 	int found = 0;
+ 
+ 	/* Uses table/name; dunno if this is legit */
+-	oid rhcNodeName_oid[] =   { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1, 1 };
+ 	oid rhcNodeStatus_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1, 2 };
+ 	oid rhcNodeID_oid[] =     { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1, 6 };
+ 
+@@ -108,8 +107,8 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 
+ 			Trap trap(rhcNodeState_trap, rhcNodeState_len);
+ 
+-			trap.Add(rhcNodeName_oid,
+-				 OID_LENGTH(rhcNodeName_oid),
++			trap.Add(rhcClusterNodesNames_oid,
++				 OID_LENGTH(rhcClusterNodesNames_len),
+ 				 (*x)->name());
+ 			trap.Add(rhcNodeStatus_oid,
+ 				 OID_LENGTH(rhcNodeStatus_oid),
+@@ -123,8 +122,8 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 		if (!found) {
+ 			/* present in old but not new; advertise as offline */
+ 			Trap trap(rhcNodeState_trap, rhcNodeState_len);
+-			trap.Add(rhcNodeName_oid,
+-				 OID_LENGTH(rhcNodeName_oid),
++			trap.Add(rhcClusterNodesNames_oid,
++				 OID_LENGTH(rhcClusterNodesNames_len),
+ 				 (*x)->name());
+ 			trap.Add(rhcNodeStatus_oid,
+ 				 OID_LENGTH(rhcNodeStatus_oid), 2);
+@@ -154,8 +153,8 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 				continue;
+ 
+ 			Trap trap(rhcNodeState_trap, rhcNodeState_len);
+-			trap.Add(rhcNodeName_oid,
+-				 OID_LENGTH(rhcNodeName_oid),
++			trap.Add(rhcClusterNodesNames_oid,
++				 OID_LENGTH(rhcClusterNodesNames_len),
+ 				 (*x)->name());
+ 			trap.Add(rhcNodeStatus_oid,
+ 				 OID_LENGTH(rhcNodeStatus_oid), 2);
+@@ -172,7 +171,6 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 	list<counting_auto_ptr<Service> > svcs = cluster->services();
+ 
+ 	/* Uses table/name; dunno if this is legit */
+-	oid rhcSvcName_oid[]   = { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2, 1 };
+ 	oid rhcSvcStatus_oid[] = { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2, 3 };
+ 	oid rhcSvcOwner_oid[] =  { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2, 5 };
+ 
+@@ -200,8 +198,8 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 
+ 			Trap trap(rhcServiceState_trap, rhcServiceState_len);
+ 
+-			trap.Add(rhcSvcName_oid,
+-				 OID_LENGTH(rhcSvcName_oid),
++			trap.Add(rhcClusterServicesNames_oid,
++				 OID_LENGTH(rhcClusterServicesNames_len),
+ 				 (*y)->name());
+ 			trap.Add(rhcSvcStatus_oid,
+ 				 OID_LENGTH(rhcSvcStatus_oid),
+@@ -216,8 +214,8 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 			/* present in old but not new; set status as unknown */
+ 			Trap trap(rhcServiceState_trap, rhcServiceState_len);
+ 
+-			trap.Add(rhcSvcName_oid,
+-				 OID_LENGTH(rhcSvcName_oid),
++			trap.Add(rhcClusterServicesNames_oid,
++				 OID_LENGTH(rhcClusterServicesNames_len),
+ 				 (*x)->name());
+ 			trap.Add(rhcSvcStatus_oid,
+ 				 OID_LENGTH(rhcSvcStatus_oid), 
+@@ -245,8 +243,8 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 			int code = getServiceStatusCode((*x));
+ 
+ 			Trap trap(rhcServiceState_trap, rhcServiceState_len);
+-			trap.Add(rhcSvcName_oid,
+-				 OID_LENGTH(rhcSvcName_oid),
++			trap.Add(rhcClusterServicesNames_oid,
++				 OID_LENGTH(rhcClusterServicesNames_len),
+ 				 (*x)->name());
+ 			trap.Add(rhcSvcStatus_oid,
+ 				 OID_LENGTH(rhcSvcStatus_oid),
+-- 
+1.6.2.5
+

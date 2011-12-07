@@ -1,0 +1,171 @@
+diff -ur -x Makefile -x '*.mk' a/ricci/common/ClientSocket.cpp b/ricci/common/ClientSocket.cpp
+--- a/ricci/common/ClientSocket.cpp	2010-01-15 01:38:30.000000000 -0500
++++ b/ricci/common/ClientSocket.cpp	2010-08-03 23:30:38.550252000 -0400
+@@ -25,6 +25,7 @@
+ #include "Network.h"
+ 
+ #include <unistd.h>
++#include <stdio.h>
+ #include <errno.h>
+ #include <string.h>
+ #include <sys/types.h>
+@@ -32,6 +33,7 @@
+ #include <sys/un.h>
+ #include <String.h>
+ #include <netdb.h>
++#include <netinet/in.h>
+ 
+ extern "C" {
+ 	#include "sys_util.h"
+@@ -41,6 +43,7 @@
+ ClientSocket::ClientSocket() :
+ 	Socket(-1),
+ 	sa_addr(NULL),
++	sa_family(AF_UNSPEC),
+ 	sa_len(0)
+ {}
+ 
+@@ -49,6 +52,7 @@
+ {
+ 	sa_len = len;
+ 	if (len > 0) {
++		sa_family = addr->sa_family;
+ 		sa_addr = (struct sockaddr *) malloc(len);
+ 		if (sa_addr == NULL)
+ 			throw String("Out of memory");
+@@ -59,6 +63,7 @@
+ ClientSocket::ClientSocket(const String& sock_path) :
+ 	Socket(-1),
+ 	sa_addr(NULL),
++	sa_family(AF_UNIX),
+ 	sa_len(0)
+ {
+ 	_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+@@ -89,10 +94,13 @@
+ 	Socket(-1)
+ {
+ 	struct addrinfo *cur;
+-	struct addrinfo *addr_list = Network::resolve_host(hostname.c_str());
++	struct addrinfo *addr_list;
++	char port_str[8];
+ 
++	snprintf(port_str, sizeof(port_str), "%d", port);
++	addr_list = Network::resolve_host(hostname.c_str(), port_str);
+ 	for (cur = addr_list ; cur != NULL ; cur = cur->ai_next) {
+-		_sock = socket(cur->ai_socktype, SOCK_STREAM, 0);
++		_sock = socket(cur->ai_family, SOCK_STREAM, 0);
+ 		if (_sock == -1)
+ 			continue;
+ 
+@@ -195,23 +203,52 @@
+ ClientSocket::connected_to(const String& hostname)
+ {
+ 	struct addrinfo *addr_list = NULL;
++	bool hosts_match = false;
+ 
+ 	try {
+ 		struct addrinfo *cur;
++		struct sockaddr_in stemp, *sin = (struct sockaddr_in *) sa_addr;
++		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa_addr;
++
++		if (sa_family == AF_INET6) {
++			if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
++				stemp.sin_addr.s_addr = sin6->sin6_addr.s6_addr32[3];
++				sin = &stemp;
++			} else
++				sin = NULL;
++		} else {
++			sin6 = NULL;
++			sin = (struct sockaddr_in *) sa_addr;
++		}
+ 
+ 		addr_list = Network::resolve_host(hostname.c_str());
+ 		for (cur = addr_list ; cur != NULL ; cur = cur->ai_next) {
+-			if (cur->ai_addrlen == sa_len && cur->ai_family == sa_family) {
+-				if (!memcmp(cur->ai_addr, sa_addr, sa_len)) {
+-					freeaddrinfo(addr_list);
+-					return (true);
++			if (cur->ai_family == AF_INET) {
++				struct sockaddr_in *sin_c;
++				sin_c = (struct sockaddr_in *) cur->ai_addr;
++
++				if (sin != NULL &&
++ 					sin_c->sin_addr.s_addr == sin->sin_addr.s_addr)
++				{
++					hosts_match = true;
++					break;
++				}
++			} else if (cur->ai_family == AF_INET6) {
++				struct sockaddr_in6 *sin6_c;
++				sin6_c = (struct sockaddr_in6 *) cur->ai_addr;
++
++				if (sin6 != NULL &&
++					IN6_ARE_ADDR_EQUAL(&sin6_c->sin6_addr, &sin6->sin6_addr))
++				{
++					hosts_match = true;
++					break;
+ 				}
+ 			}
+ 		}
+ 	} catch ( ... ) {}
+ 
+ 	freeaddrinfo(addr_list);
+-	return false;
++	return (hosts_match);
+ }
+ 
+ String
+diff -ur -x Makefile -x '*.mk' a/ricci/common/Network.cpp b/ricci/common/Network.cpp
+--- a/ricci/common/Network.cpp	2010-01-15 01:38:30.000000000 -0500
++++ b/ricci/common/Network.cpp	2010-08-03 23:08:54.145378000 -0400
+@@ -28,6 +28,24 @@
+ #include <sys/socket.h>
+ #include <arpa/inet.h>
+ 
++struct addrinfo *Network::resolve_host(const char *hostname, const char *port) {
++	int ret;
++	struct addrinfo *res = NULL, hints;
++
++	memset(&hints, 0, sizeof(hints));
++	hints.ai_family = AF_UNSPEC;
++	hints.ai_socktype = SOCK_STREAM;
++	hints.ai_socktype = IPPROTO_TCP;
++
++	ret = getaddrinfo(hostname, port, &hints, &res);
++	if (ret != 0) {
++		if (res != NULL)
++			freeaddrinfo(res);
++		return (NULL);
++	}
++	return (res);
++}
++
+ struct addrinfo *Network::resolve_host(const char *hostname) {
+ 	int ret;
+ 	struct addrinfo *res = NULL;
+diff -ur -x Makefile -x '*.mk' a/ricci/include/Network.h b/ricci/include/Network.h
+--- a/ricci/include/Network.h	2010-01-15 01:38:30.000000000 -0500
++++ b/ricci/include/Network.h	2010-08-03 23:09:07.330321000 -0400
+@@ -34,6 +34,7 @@
+ 	public:
+ 		static std::vector<String> name2IP(const char *hostname);
+ 		static struct addrinfo *resolve_host(const char *host);
++		static struct addrinfo *resolve_host(const char *host, const char *port);
+ 		static String localhost();
+ 
+ 
+diff -ur -x Makefile -x '*.mk' a/ricci/modules/cluster/clumon/src/daemon/Communicator.cpp b/ricci/modules/cluster/clumon/src/daemon/Communicator.cpp
+--- a/ricci/modules/cluster/clumon/src/daemon/Communicator.cpp	2010-01-15 01:38:30.000000000 -0500
++++ b/ricci/modules/cluster/clumon/src/daemon/Communicator.cpp	2010-08-03 23:26:57.227913000 -0400
+@@ -217,8 +217,10 @@
+ 							iter++)
+ 					{
+ 						String& name = *iter;
+-						if (sock.connected_to(name))
++						if (sock.connected_to(name)) {
+ 							hostname = name;
++							break;
++						}
+ 					}
+ 
+ 					if (hostname.size()) {

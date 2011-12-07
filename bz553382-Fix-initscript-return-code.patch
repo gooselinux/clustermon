@@ -1,0 +1,28 @@
+From 48841f1c972d62a84b7669fe6a4630101f349e4e Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Tue, 18 May 2010 12:58:22 -0400
+Subject: [PATCH 1/2] modclusterd: Fix initscript return code
+
+Resolves: bz553382
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/init.d/modclusterd |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/init.d/modclusterd b/ricci/modules/cluster/clumon/init.d/modclusterd
+index f291724..78d61cc 100755
+--- a/ricci/modules/cluster/clumon/init.d/modclusterd
++++ b/ricci/modules/cluster/clumon/init.d/modclusterd
+@@ -151,7 +151,7 @@ case $1 in
+ 
+ 	*)
+ 		echo $"Usage: $0 {start|stop|reload|restart|status}"
+-		ret=3
++		ret=2
+ 	;;
+ esac
+ 
+-- 
+1.6.2.5
+

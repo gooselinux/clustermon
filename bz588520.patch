@@ -1,0 +1,12 @@
+diff -up clustermon-0.16.2/ricci/modules/cluster/ClusterStatus.cpp.versionfix clustermon-0.16.2/ricci/modules/cluster/ClusterStatus.cpp
+--- clustermon-0.16.2/ricci/modules/cluster/ClusterStatus.cpp.versionfix	2010-05-03 15:51:28.893107636 -0500
++++ clustermon-0.16.2/ricci/modules/cluster/ClusterStatus.cpp	2010-05-03 15:51:39.291107727 -0500
+@@ -206,7 +206,7 @@ Cluster::stop_node(	bool cluster_shutdow
+ 		}
+ 	}
+ 
+-	if (stat.get_attr("cluster_version") == "5") {
++	if (stat.get_attr("cluster_version") == "6") {
+ 		run_initd("rgmanager", false, true);
+ 		run_initd("gfs2", false, false);
+ 		run_initd("clvmd", false, false);

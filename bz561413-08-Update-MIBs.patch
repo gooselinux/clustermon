@@ -1,0 +1,160 @@
+From 0e772d932d5fd024fe64a5db4f1ddf5051d57167 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Thu, 13 May 2010 13:12:13 -0400
+Subject: [PATCH 08/16] modclusterd: Update MIBs
+
+Fix rest of smilint errors
+Add configuration notification OID
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB |   87 ++++++++++++++++++++---
+ 1 files changed, 78 insertions(+), 9 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+index a74a013..9087e76 100644
+--- a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
++++ b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+@@ -5,8 +5,9 @@ IMPORTS
+ 	redhat					FROM REDHAT-MIB
+ 	MODULE-IDENTITY, OBJECT-TYPE,
+ 	NOTIFICATION-TYPE,
+-	Integer32				FROM SNMPv2-SMI;
+-
++	Integer32				FROM SNMPv2-SMI
++	MODULE-COMPLIANCE, OBJECT-GROUP,
++	NOTIFICATION-GROUP			FROM SNMPv2-CONF;
+ 
+ redhatCluster MODULE-IDENTITY
+     LAST-UPDATED "201005100000Z"
+@@ -31,7 +32,9 @@ redhatCluster MODULE-IDENTITY
+ rhcMIBInfo		OBJECT IDENTIFIER ::= { redhatCluster 1 }
+ rhcCluster		OBJECT IDENTIFIER ::= { redhatCluster 2 }
+ rhcTables		OBJECT IDENTIFIER ::= { redhatCluster 3 }
+-	
++rhcNotifications	OBJECT IDENTIFIER ::= { redhatCluster 0 }
++
++rhcConformance		OBJECT IDENTIFIER ::= { redhatCluster 8 }
+ 
+ 
+ 
+@@ -47,7 +50,6 @@ rhcMIBVersion OBJECT-TYPE
+ 	::= { rhcMIBInfo 1 }
+ 
+ 
+-
+ --  #####  Cluster  #####  --
+ 
+ rhcClusterName OBJECT-TYPE
+@@ -231,7 +233,6 @@ rhcClusterConfigurationVersion OBJECT-TYPE
+ 	"Cluster configuration version"
+ 	::= { rhcCluster 21 }
+ 
+-
+ --  ##### nodes #####  --
+ 
+ 
+@@ -258,12 +259,12 @@ RhcNodeEntry ::= SEQUENCE {
+ 	rhcNodeStatusDesc    		OCTET STRING,
+ 	rhcNodeRunningServicesNum	Integer32,
+ 	rhcNodeRunningServicesNames	OCTET STRING,
+-	rhcNodeID			Integer32,
++	rhcNodeID			Integer32
+ }
+ 
+ rhcNodeName OBJECT-TYPE
+ 	SYNTAX      OCTET STRING (SIZE(0..64))
+-	MAX-ACCESS  read-only
++	MAX-ACCESS  not-accessible
+ 	STATUS      current
+ 	DESCRIPTION
+ 	"Node name"
+@@ -348,7 +349,7 @@ RhcServiceEntry ::= SEQUENCE {
+ 
+ rhcServiceName OBJECT-TYPE
+ 	SYNTAX      OCTET STRING (SIZE(0..64))
+-	MAX-ACCESS  read-only
++	MAX-ACCESS  not-accessible
+ 	STATUS      current
+ 	DESCRIPTION
+ 	"Service name"
+@@ -391,7 +392,75 @@ rhcServiceRunningOnNode OBJECT-TYPE
+ 	"Name of node the service runs on"
+ 	::= { rhcServiceEntry 5 }
+ 
+---  ##### notifications #####  --
++--  ##### notifications for cluster #####  --
++
++rhcConfigUpdate NOTIFICATION-TYPE
++        OBJECTS { rhcClusterConfigurationVersion }
++	STATUS current
++	DESCRIPTION "Cluster configuration update"
++        ::= { rhcNotifications 1 }
++
++
++
++-- CONFORMANCE
++
++rhcCompliances OBJECT IDENTIFIER ::= { rhcConformance 1 }
++
++rhcGroups OBJECT IDENTIFIER ::= { rhcConformance 2 }
++
++rhcCompliance MODULE-COMPLIANCE
++    STATUS      current
++    DESCRIPTION "Red Hat Clustering Compliance Information"
++    MODULE     -- this module
++    MANDATORY-GROUPS { rhcObjectGroup, rhcNotificationGroup }
++
++    ::= { rhcCompliances 1 }
++
++rhcObjectGroup OBJECT-GROUP
++    OBJECTS {
++	rhcMIBVersion,
++	rhcClusterName,
++	rhcClusterStatusCode,
++	rhcClusterStatusDesc,
++	rhcClusterVotesNeededForQuorum,
++	rhcClusterVotes,
++	rhcClusterQuorate,
++	rhcClusterNodesNum,
++	rhcClusterNodesNames,
++	rhcClusterAvailNodesNum,
++	rhcClusterAvailNodesNames,
++	rhcClusterUnavailNodesNum,
++	rhcClusterUnavailNodesNames,
++	rhcClusterServicesNum,
++	rhcClusterServicesNames,
++	rhcClusterRunningServicesNum,
++	rhcClusterRunningServicesNames,
++	rhcClusterStoppedServicesNum,
++	rhcClusterStoppedServicesNames,
++	rhcClusterFailedServicesNum,
++	rhcClusterFailedServicesNames,
++	rhcClusterConfigurationVersion,
++	rhcNodeStatusCode,
++	rhcNodeStatusDesc,
++	rhcNodeRunningServicesNum,
++	rhcNodeRunningServicesNames,
++	rhcNodeID,
++	rhcServiceStatusCode,
++	rhcServiceStatusDesc,
++	rhcServiceStartMode,
++	rhcServiceRunningOnNode
++    }
++    STATUS      current
++    DESCRIPTION "Red Hat Clustering Objects"
++    ::= { rhcGroups 1 }
++
++rhcNotificationGroup NOTIFICATION-GROUP
++    NOTIFICATIONS {
++	rhcConfigUpdate
++    }
++    STATUS	current
++    DESCRIPTION "Red Hat Clustering Notifications"
++    ::= { rhcGroups 2 }
+ 
+ 
+ END
+-- 
+1.6.2.5
+

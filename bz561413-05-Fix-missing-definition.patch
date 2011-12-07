@@ -1,0 +1,25 @@
+From 4b0d1796a49d948e3016af3eb31593d6cc8c043f Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Wed, 12 May 2010 11:27:06 -0400
+Subject: [PATCH 05/16] modclusterd: Fix missing definition
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ .../cluster/clumon/src/snmp-agent/clusterMIB.h     |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.h b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.h
+index 96cac3c..1775339 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.h
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMIB.h
+@@ -57,6 +57,7 @@ extern "C"
+ 	Netsnmp_Node_Handler handle_rhcClusterRunningServicesNum;
+ 	Netsnmp_Node_Handler handle_rhcClusterRunningServicesNames;
+ 	Netsnmp_Node_Handler handle_rhcClusterVotesNeededForQuorum;
++	Netsnmp_Node_Handler handle_rhcClusterConfigVersion;
+ };
+ 
+ #endif
+-- 
+1.6.2.5
+

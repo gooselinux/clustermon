@@ -1,0 +1,35 @@
+From f88eeaecf17e6130bb2724fb483b4b5d360a9947 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Thu, 13 May 2010 13:21:19 -0400
+Subject: [PATCH 11/16] modclusterd: Fix snmpd README
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/README.snmpd |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/README.snmpd b/ricci/modules/cluster/clumon/README.snmpd
+index 8239e52..0e7aeb3 100644
+--- a/ricci/modules/cluster/clumon/README.snmpd
++++ b/ricci/modules/cluster/clumon/README.snmpd
+@@ -15,7 +15,7 @@ Sample configurations:
+ ######################################
+ 
+ dlmod RedHatCluster	/usr/lib/cluster-snmp/libClusterMonitorSnmp.so
+-view	systemview	included	REDHAT-CLUSTER-MIB:RedHatCluster
++view	systemview	included	REDHAT-CLUSTER-MIB:redhatCluster
+ 
+ ######################################
+ ##     cluster monitoring done      ##
+@@ -55,7 +55,7 @@ access	clusterGroup	""	any		noauth		prefix	clusterview	none	none
+ 
+ net-snmp client configuration:
+ Place REDHAT-MIB and REDHAT-CLUSTER-MIB into ~/.snmp/mibs/, and query cluster using:
+-snmpwalk -v 2c -c COMMUNITY NODENAME REDHAT-CLUSTER-MIB::RedHatCluster
++snmpwalk -v 2c -c COMMUNITY NODENAME REDHAT-CLUSTER-MIB::redhatCluster
+ (replace NODENAME with the hostname of one of cluster nodes running software)
+ 
+ 
+-- 
+1.6.2.5
+

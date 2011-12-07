@@ -1,0 +1,44 @@
+From 6c2f371583cd2bf25383b5eb1c7d34bdb9053164 Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Wed, 12 May 2010 11:19:19 -0400
+Subject: [PATCH 01/16] modclusterd: Fix REDHAT-MIB smilint issues
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/REDHAT-MIB |   11 ++++++-----
+ 1 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/REDHAT-MIB b/ricci/modules/cluster/clumon/REDHAT-MIB
+index a27c497..537a2b4 100644
+--- a/ricci/modules/cluster/clumon/REDHAT-MIB
++++ b/ricci/modules/cluster/clumon/REDHAT-MIB
+@@ -2,12 +2,11 @@ REDHAT-MIB DEFINITIONS ::= BEGIN
+ 
+ 
+ IMPORTS
+-	enterprises				FROM RFC1155-SMI
++	enterprises				FROM SNMPv2-SMI
+ 	MODULE-IDENTITY				FROM SNMPv2-SMI;
+ 
+-
+-RedHat MODULE-IDENTITY
+-    LAST-UPDATED "200512060000Z"            -- Dec 06 2005, midnight
++redhat MODULE-IDENTITY
++    LAST-UPDATED "201005100000Z"
+     ORGANIZATION "Red Hat, Inc (www.redhat.com)"
+     CONTACT-INFO "postal:   Red Hat, Inc
+ 		   	    1801 Varsity Drive
+@@ -17,7 +16,9 @@ RedHat MODULE-IDENTITY
+ 		  email:    customerservice@redhat.com
+                  "
+     DESCRIPTION  "Red Hat, Inc MIB
+-                 "
++		 "
++    REVISION     "201005100000Z"
++    DESCRIPTION  "Update to fix smilint isuses"
+     REVISION     "200512060000Z"            -- Dec 06 2005, midnight
+     DESCRIPTION  "Initial version.
+ 		 "
+-- 
+1.6.2.5
+

@@ -1,0 +1,398 @@
+From 6d9c210b4f63ca386961b80b532709a7b242808f Mon Sep 17 00:00:00 2001
+From: Lon Hohberger <lhh@redhat.com>
+Date: Fri, 14 May 2010 15:52:25 -0400
+Subject: [PATCH 16/16] modclusterd: Add SNMP traps for services/node events
+
+Unfortunately, due to the polling nature of the SNMP
+agent, the code can actually miss state transitions.
+
+For example, if you restart a service quickly in place
+or a node leaves/rejoins within 5 seconds, you will
+see no events.  This can be cleaned up by checking
+transition times (for services, anyway).
+
+Signed-off-by: Lon Hohberger <lhh@redhat.com>
+---
+ ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB    |    3 +-
+ .../modules/cluster/clumon/src/snmp-agent/Trap.cpp |    2 +-
+ ricci/modules/cluster/clumon/src/snmp-agent/Trap.h |    2 +-
+ .../clumon/src/snmp-agent/clusterMonitorSnmp.cpp   |  193 ++++++++++++++++++++
+ .../clumon/src/snmp-agent/nodesMIB_access.cpp      |   16 +-
+ .../clumon/src/snmp-agent/servicesMIB_access.cpp   |   14 +-
+ 6 files changed, 212 insertions(+), 18 deletions(-)
+
+diff --git a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+index 9087e76..21fa811 100644
+--- a/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
++++ b/ricci/modules/cluster/clumon/REDHAT-CLUSTER-MIB
+@@ -292,7 +292,6 @@ rhcNodeStatusDesc OBJECT-TYPE
+ 	"Node status description"
+ 	::= { rhcNodeEntry 3 }
+ 
+-
+ rhcNodeRunningServicesNum OBJECT-TYPE
+ 	SYNTAX      Integer32
+ 	MAX-ACCESS  read-only
+@@ -373,7 +372,7 @@ rhcServiceStatusDesc OBJECT-TYPE
+ 	MAX-ACCESS  read-only
+ 	STATUS      current
+ 	DESCRIPTION
+-	"Dervice status description"
++	"Service status description"
+ 	::= { rhcServiceEntry 3 }
+ 
+ rhcServiceStartMode OBJECT-TYPE
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/Trap.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/Trap.cpp
+index b368997..1ce8361 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/Trap.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/Trap.cpp
+@@ -44,7 +44,7 @@ Trap::Add(oid o[], size_t o_len, oid data[], size_t data_len)
+ }
+ 
+ int
+-Trap::Add(oid o[], size_t o_len, String& data)
++Trap::Add(oid o[], size_t o_len, String data)
+ {
+ 	if (snmp_varlist_add_variable(&my_vars, o, o_len,
+ 				ASN_OCTET_STR,
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/Trap.h b/ricci/modules/cluster/clumon/src/snmp-agent/Trap.h
+index cbfee72..fd736a7 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/Trap.h
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/Trap.h
+@@ -9,7 +9,7 @@ class Trap
+ 		Trap(oid trap_oid[], size_t trap_len);
+ 		~Trap();
+ 
+-		int Add(oid o[], size_t o_len, String& data);
++		int Add(oid o[], size_t o_len, String data);
+ 		int Add(oid o[], size_t o_len, const char *data);
+ 		int Add(oid o[], size_t o_len, oid data[], size_t data_len);
+ 		int Add(oid o[], size_t o_len, int data);
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
+index 9eeadfb..aeb27af 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/clusterMonitorSnmp.cpp
+@@ -29,11 +29,23 @@
+ #include "Cluster.h"
+ #include "rhc_oid.h"
+ #include "Trap.h"
++#include "nodesMIB.h"
++
++#include <list>
+ 
+ using namespace ClusterMonitoring;
++using namespace std;
+ 
+ ClusterMonitoring::ClusterMonitor monitor;
+ 
++/* From nodesMIB_access.cpp */
++String getNodeStatusDescription(unsigned int code);
++unsigned int getNodeStatusCode(counting_auto_ptr<Node> node);
++
++/* from servicesMIB_access.cpp */
++String getServiceStatusDescription(unsigned int code);
++unsigned int getServiceStatusCode(counting_auto_ptr<Service>);
++
+ 
+ void
+ check_cluster_state(unsigned int clientreg, void *clientarg)
+@@ -63,6 +75,187 @@ check_cluster_state(unsigned int clientreg, void *clientarg)
+ 			 cluster->quorate(true));
+ 		trap.Send();
+ 	}
++
++	/* ****** NODES ****** */
++
++	/* Compare nodes */
++	list<counting_auto_ptr<Node> > old_nodes = old_status->nodes();
++	list<counting_auto_ptr<Node> > nodes = cluster->nodes();
++	int found = 0;
++
++	/* Uses table/name; dunno if this is legit */
++	oid rhcNodeName_oid[] =   { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1, 1 };
++	oid rhcNodeStatus_oid[]	= { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1, 2 };
++	oid rhcNodeID_oid[] =     { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 1, 6 };
++
++	for (list<counting_auto_ptr<Node> >::iterator x = old_nodes.begin();
++	     x != old_nodes.end(); x++) {
++		found = 0;
++
++		for (list<counting_auto_ptr<Node> >::iterator y = nodes.begin();
++		     y != nodes.end(); y++) {
++			if ((*x)->name() != (*y)->name())
++				continue;
++
++			int statuscode = getNodeStatusCode((*y));
++
++			found = 1;
++
++			if ((*x)->online() == (*y)->online())
++				continue;
++			if ((*x)->clustered() == (*y)->clustered())
++				continue;
++
++			Trap trap(rhcNodeState_trap, rhcNodeState_len);
++
++			trap.Add(rhcNodeName_oid,
++				 OID_LENGTH(rhcNodeName_oid),
++				 (*x)->name());
++			trap.Add(rhcNodeStatus_oid,
++				 OID_LENGTH(rhcNodeStatus_oid),
++				 statuscode);
++			trap.Add(rhcNodeID_oid,
++				 OID_LENGTH(rhcNodeID_oid),
++				 (*x)->nodeid());
++			trap.Send();
++		}
++
++		if (!found) {
++			/* present in old but not new; advertise as offline */
++			Trap trap(rhcNodeState_trap, rhcNodeState_len);
++			trap.Add(rhcNodeName_oid,
++				 OID_LENGTH(rhcNodeName_oid),
++				 (*x)->name());
++			trap.Add(rhcNodeStatus_oid,
++				 OID_LENGTH(rhcNodeStatus_oid), 2);
++			trap.Add(rhcNodeID_oid,
++				 OID_LENGTH(rhcNodeID_oid), (*x)->nodeid());
++			trap.Send();
++		}
++	}
++
++	for (list<counting_auto_ptr<Node> >::iterator x = nodes.begin();
++	     x != nodes.end(); x++) {
++		found = 0;
++
++		for (list<counting_auto_ptr<Node> >::iterator y = old_nodes.begin();
++		     y != old_nodes.end(); y++) {
++			if ((*x)->name() != (*y)->name())
++				continue;
++
++			found = 1;
++		}
++
++		if (!found) {
++			/* present in new but not old; update state if online */
++			int statuscode = getNodeStatusCode((*x));
++
++			if (statuscode == 2)
++				continue;
++
++			Trap trap(rhcNodeState_trap, rhcNodeState_len);
++			trap.Add(rhcNodeName_oid,
++				 OID_LENGTH(rhcNodeName_oid),
++				 (*x)->name());
++			trap.Add(rhcNodeStatus_oid,
++				 OID_LENGTH(rhcNodeStatus_oid), 2);
++			trap.Add(rhcNodeID_oid,
++				 OID_LENGTH(rhcNodeID_oid), (*x)->nodeid());
++			trap.Send();
++		}
++	}
++
++	/* ****** Services ****** */
++
++	/* Compare services */
++	list<counting_auto_ptr<Service> > old_svcs = old_status->services();
++	list<counting_auto_ptr<Service> > svcs = cluster->services();
++
++	/* Uses table/name; dunno if this is legit */
++	oid rhcSvcName_oid[]   = { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2, 1 };
++	oid rhcSvcStatus_oid[] = { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2, 3 };
++	oid rhcSvcOwner_oid[] =  { 1, 3, 6, 1, 4, 1, 2312, 8, 3, 2, 5 };
++
++	for (list<counting_auto_ptr<Service> >::iterator x = old_svcs.begin();
++	     x != old_svcs.end(); x++) {
++		found = 0;
++
++		for (list<counting_auto_ptr<Service> >::iterator y = svcs.begin();
++		     y != svcs.end(); y++) {
++
++			int old_code, new_code;
++
++			if ((*x)->name() != (*y)->name())
++				continue;
++
++			found = 1;
++
++			old_code = getServiceStatusCode((*x));
++			new_code = getServiceStatusCode((*y));
++
++			if (old_code == new_code)
++				continue;
++			if ((*x)->nodename() == (*y)->nodename())
++				continue;
++
++			Trap trap(rhcServiceState_trap, rhcServiceState_len);
++
++			trap.Add(rhcSvcName_oid,
++				 OID_LENGTH(rhcSvcName_oid),
++				 (*y)->name());
++			trap.Add(rhcSvcStatus_oid,
++				 OID_LENGTH(rhcSvcStatus_oid),
++				 getServiceStatusDescription(new_code));
++			trap.Add(rhcSvcOwner_oid,
++				 OID_LENGTH(rhcSvcOwner_oid),
++				 (*y)->nodename());
++			trap.Send();
++		}
++
++		if (!found) {
++			/* present in old but not new; set status as unknown */
++			Trap trap(rhcServiceState_trap, rhcServiceState_len);
++
++			trap.Add(rhcSvcName_oid,
++				 OID_LENGTH(rhcSvcName_oid),
++				 (*x)->name());
++			trap.Add(rhcSvcStatus_oid,
++				 OID_LENGTH(rhcSvcStatus_oid), 
++				 getServiceStatusDescription(3));
++			trap.Add(rhcSvcOwner_oid,
++				 OID_LENGTH(rhcSvcOwner_oid), "none");
++			trap.Send();
++		}
++	}
++
++	for (list<counting_auto_ptr<Service> >::iterator x = svcs.begin();
++	     x != svcs.end(); x++) {
++		found = 0;
++
++		for (list<counting_auto_ptr<Service> >::iterator y = old_svcs.begin();
++		     y != old_svcs.end(); y++) {
++			if ((*x)->name() != (*y)->name())
++				continue;
++
++			found = 1;
++		}
++
++		if (!found) {
++			/* present in new but not old; update state if online */
++			int code = getServiceStatusCode((*x));
++
++			Trap trap(rhcServiceState_trap, rhcServiceState_len);
++			trap.Add(rhcSvcName_oid,
++				 OID_LENGTH(rhcSvcName_oid),
++				 (*x)->name());
++			trap.Add(rhcSvcStatus_oid,
++				 OID_LENGTH(rhcSvcStatus_oid),
++				 getServiceStatusDescription(code));
++			trap.Add(rhcSvcOwner_oid,
++				 OID_LENGTH(rhcSvcOwner_oid), (*x)->nodename());
++			trap.Send();
++		}
++	}
+ }
+ 
+ 
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp
+index 1bb4c32..51add06 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/nodesMIB_access.cpp
+@@ -40,8 +40,8 @@ using namespace ClusterMonitoring;
+ using namespace std;
+ 
+ 
+-static unsigned int getStatusCode(counting_auto_ptr<Node>);
+-static String getStatusDescription(unsigned int code);
++unsigned int getNodeStatusCode(counting_auto_ptr<Node>);
++String getNodeStatusDescription(unsigned int code);
+ 
+ 
+ class LoopContext
+@@ -298,7 +298,7 @@ get_rhcNodeRunningServicesNames(void *data_context, size_t * ret_len)
+ // ## status ##
+ 
+ unsigned int
+-getStatusCode(counting_auto_ptr<Node> node)
++getNodeStatusCode(counting_auto_ptr<Node> node)
+ {
+   if (node->clustered())
+     // in cluster
+@@ -311,8 +311,10 @@ getStatusCode(counting_auto_ptr<Node> node)
+   // OK
+   return 2;
+ }
++
++
+ String
+-getStatusDescription(unsigned int code)
++getNodeStatusDescription(unsigned int code)
+ {
+   switch(code) {
+   case 0:
+@@ -337,7 +339,7 @@ get_rhcNodeStatusCode(void *data_context, size_t * ret_len)
+     if (node.get() == NULL)
+       return NULL;
+ 
+-    datactx->long_holder = getStatusCode(node);
++    datactx->long_holder = getNodeStatusCode(node);
+     *ret_len = sizeof(datactx->long_holder);
+     return &datactx->long_holder;
+   } catch ( ... ) {
+@@ -356,8 +358,8 @@ get_rhcNodeStatusDesc(void *data_context, size_t * ret_len)
+     if (node.get() == NULL)
+       return NULL;
+ 
+-    unsigned int code = getStatusCode(node);
+-    datactx->str_holder = getStatusDescription(code);
++    unsigned int code = getNodeStatusCode(node);
++    datactx->str_holder = getNodeStatusDescription(code);
+     *ret_len = datactx->str_holder.size();
+     return (char*) datactx->str_holder.c_str();
+   } catch ( ... ) {
+diff --git a/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB_access.cpp b/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB_access.cpp
+index 71c4112..a41080f 100644
+--- a/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB_access.cpp
++++ b/ricci/modules/cluster/clumon/src/snmp-agent/servicesMIB_access.cpp
+@@ -36,8 +36,8 @@
+ using namespace ClusterMonitoring;
+ using namespace std;
+ 
+-static unsigned int getStatusCode(counting_auto_ptr<Service>);
+-static String getStatusDescription(unsigned int code);
++unsigned int getServiceStatusCode(counting_auto_ptr<Service>);
++String getServiceStatusDescription(unsigned int code);
+ 
+ class LoopContext
+ {
+@@ -271,7 +271,7 @@ get_rhcServiceRunningOnNode(void* data_context, size_t* ret_len)
+ // ## status ##
+ 
+ unsigned int
+-getStatusCode(counting_auto_ptr<Service> service)
++getServiceStatusCode(counting_auto_ptr<Service> service)
+ {
+   if (service->failed())
+     // failed
+@@ -285,7 +285,7 @@ getStatusCode(counting_auto_ptr<Service> service)
+     return 1;
+ }
+ String
+-getStatusDescription(unsigned int code)
++getServiceStatusDescription(unsigned int code)
+ {
+   switch(code) {
+   case 0:
+@@ -310,7 +310,7 @@ get_rhcServiceStatusCode(void* data_context, size_t* ret_len)
+     if (service.get() == NULL)
+       return NULL;
+ 
+-    datactx->long_holder = getStatusCode(service);
++    datactx->long_holder = getServiceStatusCode(service);
+     *ret_len = sizeof(datactx->long_holder);
+     return &datactx->long_holder;
+   } catch ( ... ) {
+@@ -329,8 +329,8 @@ get_rhcServiceStatusDesc(void* data_context, size_t* ret_len)
+     if (service.get() == NULL)
+       return NULL;
+ 
+-    unsigned int code = getStatusCode(service);
+-    datactx->str_holder = getStatusDescription(code);
++    unsigned int code = getServiceStatusCode(service);
++    datactx->str_holder = getServiceStatusDescription(code);
+     *ret_len = datactx->str_holder.size();
+     return (char*) datactx->str_holder.c_str();
+   } catch ( ... ) {
+-- 
+1.6.2.5
+
